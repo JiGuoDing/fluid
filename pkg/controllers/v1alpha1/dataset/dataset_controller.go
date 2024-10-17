@@ -57,6 +57,7 @@ type DatasetReconciler struct {
 	ResyncPeriod time.Duration
 }
 
+// Request and Context all in one
 type reconcileRequestContext struct {
 	context.Context
 	Log     logr.Logger
@@ -68,17 +69,21 @@ type reconcileRequestContext struct {
 // +kubebuilder:rbac:groups=data.fluid.io,resources=datasets/status,verbs=get;update;patch
 
 func (r *DatasetReconciler) Reconcile(context context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// 创建一个封装了context、logger和dataset信息的对象
 	ctx := reconcileRequestContext{
 		Context:        context,
 		Log:            r.Log.WithValues("dataset", req.NamespacedName),
 		NamespacedName: req.NamespacedName,
 	}
 
+	// 标记变量，用于后续是否需要重新加入调度队列
 	var notFound, needRequeue bool
+	// 日志记录请求处理
 	ctx.Log.V(1).Info("process the request", "request", req)
 
 	/*
 		### 1. Scale out runtime controller if possible
+		尝试按需扩展运行时控制器
 	*/
 	if controller, scaleout, err := deploy.ScaleoutRuntimeContollerOnDemand(r.Client, req.NamespacedName, ctx.Log); err != nil {
 		// ctx.Log.Error(err, "Not able to scale out the runtime controller on demand due to runtime is not found", "RuntimeController", ctx)
@@ -99,19 +104,21 @@ func (r *DatasetReconciler) Reconcile(context context.Context, req ctrl.Request)
 	if err := r.Get(ctx, req.NamespacedName, &ctx.Dataset); err != nil {
 		ctx.Log.Info("Unable to fetch Dataset", "reason", err)
 		if utils.IgnoreNotFound(err) != nil {
+			// err is not NotFoundError
 			r.Log.Error(err, "failed to get dataset")
 			return utils.RequeueIfError(err)
 		}
 		// if the error is NotFoundError, set notFound to true
 		notFound = true
 	} else {
+		// 成功获取(加载)dataset对象
 		return r.reconcileDataset(ctx, needRequeue)
 	}
 
 	/*
 		### 3. we'll ignore not-found errors, since they can't be fixed by an immediate
-		 requeue (we'll need to wait for a new notification), and we can get them
-		 on deleted requests.
+		requeue (we'll need to wait for a new notification), and we can get them
+		on deleted requests.
 	*/
 	if notFound {
 		ctx.Log.V(1).Info("Not found.")
@@ -119,8 +126,9 @@ func (r *DatasetReconciler) Reconcile(context context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-// reconcile Dataset
+// This function is to reconcile Dataset and it's written manully
 func (r *DatasetReconciler) reconcileDataset(ctx reconcileRequestContext, needRequeue bool) (ctrl.Result, error) {
+	// 日志记录
 	log := ctx.Log.WithName("reconcileDataset")
 	log.V(1).Info("process the dataset", "dataset", ctx.Dataset)
 
@@ -132,17 +140,19 @@ func (r *DatasetReconciler) reconcileDataset(ctx reconcileRequestContext, needRe
 		return utils.RequeueIfError(err)
 	}
 
-	// 1. Check if need to delete dataset
+	// 1. Check if need to delete dataset 如果有Timestamp说明数据集正在被删除,
+	// 调用reconcileDatasetDeletion处理删除逻辑
 	if utils.HasDeletionTimestamp(ctx.Dataset.ObjectMeta) {
 		return r.reconcileDatasetDeletion(ctx)
 	}
 
-	// 2.Add finalizer
+	// 2.Add finalizer  如果没有终结器，添加终结器并重新调度
 	if !utils.ContainsString(ctx.Dataset.ObjectMeta.GetFinalizers(), finalizer) {
 		return r.addFinalizerAndRequeue(ctx)
 	}
 
-	// 3. Create Runtime if it's reference dataset
+	// 3. Create Runtime if it's reference dataset  检查当前数据集是否为引用数据集，
+	// 如果是，且运行时不存在，则调用CreateRuntimeForReferenceDatasetIfNotExist创建运行时
 	checkReferenceDataset, err := base.CheckReferenceDataset(&ctx.Dataset)
 	if err != nil {
 		ctx.Log.Error(err, "Failed to validate dataset", "ctx", ctx)

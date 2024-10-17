@@ -47,6 +47,7 @@ import (
 
 type CheckFunc func(client.Client, types.NamespacedName) (bool, error)
 
+// 预检查
 var precheckFuncs map[string]CheckFunc
 
 func setPrecheckFunc(checks map[string]CheckFunc) {

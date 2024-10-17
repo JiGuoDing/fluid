@@ -107,6 +107,7 @@ const (
 )
 
 // ObjectMeta is metadata that all persisted resources must have, which includes all objects
+// which will turn out to be the content of metadata:
 // users must create.
 type ObjectMeta struct {
 	// Name must be unique within a namespace. Is required when creating resources, although
@@ -158,7 +159,7 @@ type ObjectMeta struct {
 	// +optional
 	UID types.UID `json:"uid,omitempty" protobuf:"bytes,5,opt,name=uid,casttype=k8s.io/kubernetes/pkg/types.UID"`
 
-	// An opaque value that represents the internal version of this object that can
+	// An opaque（不透明的，难理解的） value that represents the internal version of this object that can
 	// be used by clients to determine when objects have changed. May be used for optimistic
 	// concurrency, change detection, and the watch operation on a resource or set of resources.
 	// Clients must treat these values as opaque and passed unmodified back to the server.
