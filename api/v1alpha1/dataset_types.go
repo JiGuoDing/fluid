@@ -64,6 +64,7 @@ type EncryptOptionSource struct {
 	// The encryptInfo obtained from secret
 	// +optional
 	SecretKeyRef SecretKeySelector `json:"secretKeyRef,omitempty"`
+	// omitempty means ignore the field with nil(0) value
 }
 type EncryptOption struct {
 	// The name of encryptOption

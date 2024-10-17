@@ -39,7 +39,7 @@ const (
 	APIGateway AlluxioRuntimeRole = "apiGateway"
 )
 
-// AlluxioCompTemplateSpec is a description of the Alluxio commponents
+// AlluxioCompTemplateSpec is a description of the Alluxio components
 type AlluxioCompTemplateSpec struct {
 	// Replicas is the desired number of replicas of the given template.
 	// If unspecified, defaults to 1.
@@ -60,9 +60,11 @@ type AlluxioCompTemplateSpec struct {
 	// +optional
 	Ports map[string]int `json:"ports,omitempty"`
 
-	// Resources that will be requested by the Alluxio component. <br>
+	// Resources that will be requested by the Alluxio component.
+	// And the maximum, minimum resources that a component could hold
 	// <br>
-	// Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources
+	// <br>
+	// Resources are not allowed for ephemeral(transient) containers. Ephemeral containers use spare resources
 	// already allocated to the pod.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
@@ -82,6 +84,7 @@ type AlluxioCompTemplateSpec struct {
 	// +kubebuilder:validation:Enum=HostNetwork;"";ContainerNetwork
 	// +optional
 	NetworkMode NetworkMode `json:"networkMode,omitempty"`
+
 	// VolumeMounts specifies the volumes listed in ".spec.volumes" to mount into the alluxio runtime component's filesystem.
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
