@@ -18,10 +18,13 @@ package jindocache
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
+	"github.com/fluid-cloudnative/fluid/pkg/common"
 	"github.com/fluid-cloudnative/fluid/pkg/ctrl"
+	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
 	fluiderrs "github.com/fluid-cloudnative/fluid/pkg/errors"
 	cruntime "github.com/fluid-cloudnative/fluid/pkg/runtime"
 	"github.com/fluid-cloudnative/fluid/pkg/utils"
@@ -213,17 +216,38 @@ func (e *JindoCacheEngine) syncFuseSpec(ctx cruntime.ReconcileRequestContext, ru
 				e.Log.V(1).Info("The resource requirement of fuse is the same, skip")
 			}
 
+			metricsEnabled, exists := fusesToUpdate.Spec.Template.ObjectMeta.Annotations[common.AnnotationPrometheusFuseMetricsScrapeKey]
+			if exists && metricsEnabled != common.True {
+				e.Log.V(1).Info(fmt.Sprintf("Found user-defined annotation %s != %s, skip syncing.", common.AnnotationPrometheusFuseMetricsScrapeKey, common.True))
+			} else {
+				metricsScrapeTarget, err := base.ParseMountModeSelectorFromStr(runtime.Spec.Fuse.Metrics.ScrapeTarget)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					if metricsScrapeTarget.Selected(base.MountPodMountMode) {
+						fusesToUpdate.Spec.Template.ObjectMeta.Annotations[common.AnnotationPrometheusFuseMetricsScrapeKey] = common.True
+						changed = true
+					}
+				} else if metricsEnabled == common.True {
+					if !metricsScrapeTarget.Selected(base.MountPodMountMode) {
+						delete(fusesToUpdate.Spec.Template.ObjectMeta.Annotations, common.AnnotationPrometheusFuseMetricsScrapeKey)
+						changed = true
+					}
+				}
+			}
+
 			if changed {
 				if reflect.DeepEqual(fuses, fusesToUpdate) {
 					changed = false
 					e.Log.V(1).Info("The resource requirement of fuse is not changed, skip")
 					return nil
 				}
-				e.Log.Info("The resource requirement of fuse is updated")
 				err = e.Client.Update(context.TODO(), fusesToUpdate)
 				if err != nil {
 					e.Log.Error(err, "Failed to update the sts spec")
 				}
+				e.Log.Info("The resource requirement of fuse is updated")
 			} else {
 				e.Log.V(1).Info("The resource requirement of fuse is not set, skip")
 			}

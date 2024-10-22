@@ -85,16 +85,16 @@ func (r *DatasetReconciler) Reconcile(context context.Context, req ctrl.Request)
 		### 1. Scale out runtime controller if possible
 		尝试按需扩展运行时控制器
 	*/
-	if controller, scaleout, err := deploy.ScaleoutRuntimeContollerOnDemand(r.Client, req.NamespacedName, ctx.Log); err != nil {
+	if controller, scaleout, err := deploy.ScaleoutRuntimeControllerOnDemand(r.Client, req.NamespacedName, ctx.Log); err != nil {
 		// ctx.Log.Error(err, "Not able to scale out the runtime controller on demand due to runtime is not found", "RuntimeController", ctx)
 		ctx.Log.Info("Not able to scale out the runtime controller on demand due to runtime is not found", "error", err.Error())
 		needRequeue = true
 		// return utils.RequeueIfError(err)
 	} else {
 		if scaleout {
-			ctx.Log.V(1).Info("scale out the runtime controller on demand successfully", "controller", controller)
+			ctx.Log.Info("scale out the runtime controller on demand successfully", "controller", controller)
 		} else {
-			ctx.Log.Info("no need to scale out the runtime controller because it's already scaled", "controller", controller)
+			ctx.Log.V(1).Info("no need to scale out the runtime controller because it's already scaled", "controller", controller)
 		}
 	}
 
@@ -230,7 +230,7 @@ func (r *DatasetReconciler) reconcileDatasetDeletion(ctx reconcileRequestContext
 				ctx.Log.Error(err, "DatasetRef has changed but update failed", "DatasetDeleteError", datasetToUpdate)
 				return utils.RequeueAfterInterval(time.Duration(10 * time.Second))
 			}
-			ctx.Log.V(1).Info("Update dataset datasetRef successfully", "Before", ctx.Dataset.Status.DatasetRef, "After", datasetRefToUpdate)
+			ctx.Log.Info("Update dataset datasetRef successfully", "Before", ctx.Dataset.Status.DatasetRef, "After", datasetRefToUpdate)
 			// if dataset has been updated, return to continue next round reconcile
 			return utils.RequeueAfterInterval(1 * time.Second)
 		}
@@ -252,7 +252,7 @@ func (r *DatasetReconciler) reconcileDatasetDeletion(ctx reconcileRequestContext
 			log.Error(err, "Failed to remove finalizer")
 			return ctrl.Result{}, err
 		}
-		ctx.Log.V(1).Info("Finalizer is removed", "dataset", ctx.Dataset)
+		ctx.Log.Info("Finalizer is removed", "dataset", ctx.Dataset)
 	}
 
 	log.Info("delete the dataset successfully", "dataset", ctx.Dataset)

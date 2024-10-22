@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/fluid-cloudnative/fluid/pkg/utils"
+	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,19 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// Runtime Information interface defines the interfaces that should be implemented
-// by Alluxio Runtime or other implementation .
-// Thread safety is required from implementations of this interface.
-type RuntimeInfoInterface interface {
-	GetTieredStoreInfo() TieredStoreInfo
-
-	GetName() string
-
-	GetNamespace() string
-
-	GetRuntimeType() string
-
-	// GetStoragetLabelname(read common.ReadType, storage common.StorageType) string
+// Conventions defines naming convention for all runtime.
+// Conventions includes all the literal string used in Fluid
+// to identify the relationship between a dataset(runtime) and its component(master, worker, fuse, persistentVolume, etc.).
+type Conventions interface {
+	GetPersistentVolumeName() string
 
 	GetLabelNameForMemory() string
 
@@ -59,7 +52,22 @@ type RuntimeInfoInterface interface {
 
 	GetDatasetNumLabelName() string
 
-	GetPersistentVolumeName() string
+	GetWorkerStatefulsetName() string
+}
+
+// Runtime Information interface defines the interfaces that should be implemented
+// by Alluxio Runtime or other implementation .
+// Thread safety is required from implementations of this interface.
+type RuntimeInfoInterface interface {
+	Conventions
+
+	GetTieredStoreInfo() TieredStoreInfo
+
+	GetName() string
+
+	GetNamespace() string
+
+	GetRuntimeType() string
 
 	IsExclusive() bool
 
@@ -86,7 +94,13 @@ type RuntimeInfoInterface interface {
 	SetClient(client client.Client)
 
 	GetMetadataList() []datav1alpha1.Metadata
+
+	GetAnnotations() map[string]string
+
+	GetFuseMetricsScrapeTarget() mountModeSelector
 }
+
+var _ RuntimeInfoInterface = &RuntimeInfo{}
 
 // The real Runtime Info should implement
 type RuntimeInfo struct {
@@ -112,6 +126,8 @@ type RuntimeInfo struct {
 
 	client client.Client
 
+	annotations map[string]string
+
 	metadataList []datav1alpha1.Metadata
 }
 
@@ -120,6 +136,9 @@ type Fuse struct {
 
 	// CleanPolicy decides when to clean fuse pods.
 	CleanPolicy datav1alpha1.FuseCleanPolicy
+
+	// Metrics
+	MetricsScrapeTarget mountModeSelector
 }
 
 type TieredStoreInfo struct {
@@ -149,27 +168,22 @@ type CachePath struct {
 func BuildRuntimeInfo(name string,
 	namespace string,
 	runtimeType string,
-	tieredstore datav1alpha1.TieredStore,
 	opts ...RuntimeInfoOption) (runtime RuntimeInfoInterface, err error) {
 
-	tieredstoreInfo, err := convertToTieredstoreInfo(tieredstore)
-	if err != nil {
-		return nil, err
-	}
-
 	runtime = &RuntimeInfo{
-		name:            name,
-		namespace:       namespace,
-		runtimeType:     runtimeType,
-		tieredstoreInfo: tieredstoreInfo,
+		name:        name,
+		namespace:   namespace,
+		runtimeType: runtimeType,
 	}
 	for _, fn := range opts {
-		fn(runtime.(*RuntimeInfo))
+		if err := fn(runtime.(*RuntimeInfo)); err != nil {
+			return nil, errors.Wrapf(err, "fail to build runtime info \"%s/%s\"", namespace, name)
+		}
 	}
 	return
 }
 
-type RuntimeInfoOption func(info *RuntimeInfo)
+type RuntimeInfoOption func(info *RuntimeInfo) error
 
 func GetMetadataListFromAnnotation(accessor metav1.ObjectMetaAccessor) (ret []datav1alpha1.Metadata) {
 	annotations := accessor.GetObjectMeta().GetAnnotations()
@@ -188,13 +202,55 @@ func GetMetadataListFromAnnotation(accessor metav1.ObjectMetaAccessor) (ret []da
 }
 
 func WithMetadataList(metadataList []datav1alpha1.Metadata) RuntimeInfoOption {
-	return func(info *RuntimeInfo) {
+	return func(info *RuntimeInfo) error {
 		info.metadataList = metadataList
+		return nil
 	}
 }
 
 func (info *RuntimeInfo) GetMetadataList() []datav1alpha1.Metadata {
 	return info.metadataList
+}
+
+func WithAnnotations(annotations map[string]string) RuntimeInfoOption {
+	return func(info *RuntimeInfo) error {
+		info.annotations = annotations
+		return nil
+	}
+}
+
+func (info *RuntimeInfo) GetAnnotations() map[string]string {
+	return info.annotations
+}
+
+func WithClientMetrics(clientMetrics datav1alpha1.ClientMetrics) RuntimeInfoOption {
+	return func(info *RuntimeInfo) error {
+		if len(clientMetrics.ScrapeTarget) == 0 {
+			// When scrape target is not set, default it to None
+			clientMetrics.ScrapeTarget = MountModeSelectNone
+		}
+		metricsScrapeTarget, err := ParseMountModeSelectorFromStr(clientMetrics.ScrapeTarget)
+		if err != nil {
+			return err
+		}
+		info.fuse.MetricsScrapeTarget = metricsScrapeTarget
+		return nil
+	}
+}
+
+func (info *RuntimeInfo) GetFuseMetricsScrapeTarget() mountModeSelector {
+	return info.fuse.MetricsScrapeTarget
+}
+
+func WithTieredStore(tieredStore datav1alpha1.TieredStore) RuntimeInfoOption {
+	return func(info *RuntimeInfo) error {
+		tieredStoreInfo, err := convertToTieredstoreInfo(tieredStore)
+		if err != nil {
+			return err
+		}
+		info.tieredstoreInfo = tieredStoreInfo
+		return nil
+	}
 }
 
 func (info *RuntimeInfo) GetTieredStoreInfo() TieredStoreInfo {
@@ -354,7 +410,12 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.AlluxioRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(alluxioRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(alluxioRuntime)),
+			WithAnnotations(alluxioRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.AlluxioRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -365,7 +426,13 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.JindoRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(jindoRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(jindoRuntime)),
+			WithClientMetrics(jindoRuntime.Spec.Fuse.Metrics),
+			WithAnnotations(jindoRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.JindoRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -376,7 +443,12 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.GooseFSRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(goosefsRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(goosefsRuntime)),
+			WithAnnotations(goosefsRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.GooseFSRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -387,7 +459,12 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.JuiceFSRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(juicefsRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(juicefsRuntime)),
+			WithAnnotations(juicefsRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.JuiceFSRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -398,7 +475,12 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.ThinRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(thinRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(thinRuntime)),
+			WithAnnotations(thinRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.ThinRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -409,7 +491,12 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 		if err != nil {
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.EFCRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(efcRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(efcRuntime)),
+			WithAnnotations(efcRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.EFCRuntime, opts...)
 		if err != nil {
 			return runtimeInfo, err
 		}
@@ -418,12 +505,15 @@ func GetRuntimeInfo(client client.Client, name, namespace string) (runtimeInfo R
 	case common.VineyardRuntime:
 		vineyardRuntime, err := utils.GetVineyardRuntime(client, name, namespace)
 		if err != nil {
-			fmt.Println("Get vineyard runtime error")
 			return runtimeInfo, err
 		}
-		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.VineyardRuntime, datav1alpha1.TieredStore{}, WithMetadataList(GetMetadataListFromAnnotation(vineyardRuntime)))
+		opts := []RuntimeInfoOption{
+			WithTieredStore(datav1alpha1.TieredStore{}),
+			WithMetadataList(GetMetadataListFromAnnotation(vineyardRuntime)),
+			WithAnnotations(vineyardRuntime.Annotations),
+		}
+		runtimeInfo, err = BuildRuntimeInfo(name, namespace, common.VineyardRuntime, opts...)
 		if err != nil {
-			fmt.Println("Build vineyard runtime error")
 			return runtimeInfo, err
 		}
 		runtimeInfo.SetFuseNodeSelector(common.VineyardFuseNodeSelector)

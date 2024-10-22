@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
+	"github.com/fluid-cloudnative/fluid/pkg/common"
 	ctrlhelper "github.com/fluid-cloudnative/fluid/pkg/ctrl"
 	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/fake"
@@ -46,7 +47,7 @@ func getTestThinEngineNode(client client.Client, name string, namespace string, 
 	}
 	if withRunTime {
 		engine.runtime = &datav1alpha1.ThinRuntime{}
-		engine.runtimeInfo, _ = base.BuildRuntimeInfo(name, namespace, "thin", datav1alpha1.TieredStore{})
+		engine.runtimeInfo, _ = base.BuildRuntimeInfo(name, namespace, common.ThinRuntime)
 	}
 	return engine
 }
@@ -80,7 +81,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid1",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "thin",
+								"role":    "thin-worker",
+								"release": "spark",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{{
 					ObjectMeta: metav1.ObjectMeta{
@@ -96,6 +105,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Labels: map[string]string{
 							"app":              "thin",
 							"role":             "thin-worker",
+							"release":          "spark",
 							"fluid.io/dataset": "big-data-spark",
 						},
 					},
@@ -126,7 +136,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid2",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "thin",
+								"role":    "thin-worker",
+								"release": "hbase",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{
 					{
@@ -143,6 +161,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "thin",
 								"role":             "thin-worker",
+								"release":          "hbase",
 								"fluid.io/dataset": "big-data-hbase",
 							},
 						},
@@ -177,7 +196,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid3",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "thin",
+								"role":    "thin-worker",
+								"release": "hbase-a",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{
 					{
@@ -187,6 +214,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "thin",
 								"role":             "thin-worker",
+								"release":          "hbase-a",
 								"fluid.io/dataset": "big-data-hbase-a",
 							},
 						},
@@ -233,8 +261,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 		engine := getTestThinEngineNode(c, testcase.fields.name, testcase.fields.namespace, true)
 		runtimeInfo, err := base.BuildRuntimeInfo(testcase.fields.name,
 			testcase.fields.namespace,
-			"thin",
-			datav1alpha1.TieredStore{})
+			common.ThinRuntime)
 		if err != nil {
 			t.Errorf("BuildRuntimeInfo() error = %v", err)
 		}

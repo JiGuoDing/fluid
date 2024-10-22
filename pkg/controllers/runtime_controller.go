@@ -236,7 +236,7 @@ func (r *RuntimeReconciler) ReconcileRuntimeDeletion(engine base.Engine, ctx cru
 			log.Error(err, "Failed to remove finalizer")
 			return utils.RequeueIfError(err)
 		}
-		ctx.Log.V(1).Info("Finalizer is removed", "runtime", ctx.Runtime)
+		ctx.Log.Info("Finalizer is removed successfully", "runtime", ctx.Runtime)
 	}
 
 	return ctrl.Result{}, nil
@@ -279,7 +279,7 @@ func (r *RuntimeReconciler) ReconcileRuntime(engine base.Engine, ctx cruntime.Re
 	err = engine.CreateVolume()
 	if err != nil && utils.IgnoreAlreadyExists(err) != nil {
 		r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to setup volume due to error %v", err)
-		log.Error(err, "Failed to steup the volume")
+		log.Error(err, "Failed to setup the volume")
 		// return utils.RequeueIfError(errors.Wrap(err, "Failed to steup the ddc engine"))
 	}
 

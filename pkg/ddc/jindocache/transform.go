@@ -18,7 +18,6 @@ package jindocache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	versionutil "github.com/fluid-cloudnative/fluid/pkg/utils/version"
+	"github.com/pkg/errors"
 
 	"github.com/fluid-cloudnative/fluid/pkg/utils/kubeclient"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,11 +63,11 @@ func (e *JindoCacheEngine) transform(runtime *datav1alpha1.JindoRuntime) (value 
 	}
 
 	var cachePaths []string // /mnt/disk1/bigboot or /mnt/disk1/bigboot,/mnt/disk2/bigboot
-	var stroagePath = "/dev/shm/"
+	var storagePath = "/dev/shm/"
 	if len(runtime.Spec.TieredStore.Levels) > 0 {
-		stroagePath = runtime.Spec.TieredStore.Levels[0].Path
+		storagePath = runtime.Spec.TieredStore.Levels[0].Path
 	}
-	originPath := strings.Split(stroagePath, ",")
+	originPath := strings.Split(storagePath, ",")
 	for _, value := range originPath {
 		cachePaths = append(cachePaths, strings.TrimRight(value, "/")+"/"+
 			e.namespace+"/"+e.name+"/jindocache")
@@ -123,6 +123,7 @@ func (e *JindoCacheEngine) transform(runtime *datav1alpha1.JindoRuntime) (value 
 		Image:               smartdataConfig.image,
 		ImageTag:            smartdataConfig.imageTag,
 		ImagePullPolicy:     smartdataConfig.imagePullPolicy,
+		ImagePullSecrets:    runtime.Spec.ImagePullSecrets,
 		FuseImage:           jindoFuseImage,
 		FuseImageTag:        fuseTag,
 		FuseImagePullPolicy: fuseImagePullPolicy,
@@ -157,7 +158,7 @@ func (e *JindoCacheEngine) transform(runtime *datav1alpha1.JindoRuntime) (value 
 	if err != nil {
 		return
 	}
-	err = e.allocatePorts(value)
+	err = e.allocatePorts(runtime, value)
 	if err != nil {
 		return
 	}
@@ -174,6 +175,10 @@ func (e *JindoCacheEngine) transform(runtime *datav1alpha1.JindoRuntime) (value 
 	e.transformToken(value)
 	e.transformWorker(runtime, dataPath, userQuotas, value)
 	e.transformFuse(runtime, value)
+	err = e.transformFuseMetrics(runtime, value)
+	if err != nil {
+		return
+	}
 	e.transformInitPortCheck(value)
 	err = e.transformPodMetadata(runtime, value)
 	if err != nil {
@@ -212,6 +217,9 @@ func (e *JindoCacheEngine) handleWritePolicy(options map[string]string, metaPoli
 }
 
 func (e *JindoCacheEngine) transformMaster(runtime *datav1alpha1.JindoRuntime, metaPath string, value *Jindo, dataset *datav1alpha1.Dataset, secretMountSupport bool) (err error) {
+	if len(runtime.Spec.Master.ImagePullSecrets) != 0 {
+		value.Master.ImagePullSecrets = runtime.Spec.Master.ImagePullSecrets
+	}
 	properties := map[string]string{
 		"namespace.cluster.id":                      "local",
 		"namespace.oss.copy.size":                   "1073741824",
@@ -409,7 +417,7 @@ func (e *JindoCacheEngine) transformMaster(runtime *datav1alpha1.JindoRuntime, m
 			}
 			bucketName := rm[2]
 			if mount.Options["fs.oss.endpoint"] == "" {
-				err = fmt.Errorf("oss endpoint can not be null, please check <fs.oss.accessKeySecret> option")
+				err = fmt.Errorf("oss endpoint can not be null, please check <fs.oss.endpoint> option")
 				e.Log.Error(err, "oss endpoint can not be null")
 				return err
 			}
@@ -470,16 +478,16 @@ func (e *JindoCacheEngine) transformMaster(runtime *datav1alpha1.JindoRuntime, m
 				value.Secret = secretKeyRef.Name
 				if key == "fs."+mountType+".accessKeyId" {
 					value.SecretKey = secretKeyRef.Key
-					e.Log.Info("Get %s From %s!", key, secretKeyRef.Name)
+					e.Log.Info(fmt.Sprintf("Get %s From %s!", key, secretKeyRef.Name))
 				}
 				if key == "fs."+mountType+".accessKeySecret" {
 					value.SecretValue = secretKeyRef.Key
-					e.Log.Info("Get %s From %s!", key, secretKeyRef.Name)
+					e.Log.Info(fmt.Sprintf("Get %s From %s!", key, secretKeyRef.Name))
 				}
 			} else {
 				secret, err := kubeclient.GetSecret(e.Client, secretKeyRef.Name, e.namespace)
 				if err != nil {
-					e.Log.Info("can't get the input secret from dataset", secretKeyRef.Name)
+					e.Log.Error(err, "can't get the input secret from dataset", "secretName", secretKeyRef.Name)
 					break
 				}
 				value := secret.Data[secretKeyRef.Key]
@@ -500,6 +508,9 @@ func (e *JindoCacheEngine) transformMaster(runtime *datav1alpha1.JindoRuntime, m
 }
 
 func (e *JindoCacheEngine) transformWorker(runtime *datav1alpha1.JindoRuntime, dataPath string, userQuotas string, value *Jindo) {
+	if len(runtime.Spec.Worker.ImagePullSecrets) != 0 {
+		value.Worker.ImagePullSecrets = runtime.Spec.Worker.ImagePullSecrets
+	}
 
 	properties := map[string]string{
 		"storage.cluster.id":                   "local",
@@ -748,6 +759,9 @@ func (e *JindoCacheEngine) transformFuseResources(runtime *datav1alpha1.JindoRun
 }
 
 func (e *JindoCacheEngine) transformFuse(runtime *datav1alpha1.JindoRuntime, value *Jindo) {
+	if len(runtime.Spec.Fuse.ImagePullSecrets) != 0 {
+		value.Fuse.ImagePullSecrets = runtime.Spec.Fuse.ImagePullSecrets
+	}
 	// default enable data-cache and disable meta-cache
 	properties := map[string]string{
 		"fs.jindocache.request.user":          "root",
@@ -816,6 +830,41 @@ func (e *JindoCacheEngine) transformFuse(runtime *datav1alpha1.JindoRuntime, val
 	value.Fuse.CriticalPod = common.CriticalFusePodEnabled()
 }
 
+func (e *JindoCacheEngine) transformFuseMetrics(runtime *datav1alpha1.JindoRuntime, value *Jindo) error {
+	var userDefinedPort int = -1
+	for _, arg := range value.Fuse.Args {
+		// user may explicitly set a metrics port in fuse args
+		if strings.HasPrefix(arg, "-ometrics_port=") {
+			if port, err := strconv.ParseInt(strings.TrimPrefix(arg, "-ometrics_port="), 10, 32); err != nil {
+				return errors.Wrapf(err, "failed to parse port from %s transformFuseMetrics()", arg)
+			} else {
+				userDefinedPort = int(port)
+			}
+		}
+	}
+
+	if userDefinedPort != -1 {
+		if runtime.Spec.Fuse.Metrics.Enabled {
+			value.Fuse.MetricsPort = userDefinedPort
+		} else {
+			// even though user defines a port, we ignore it because spec.fuse.metrics.enabled = false.
+			value.Fuse.MetricsPort = 0
+		}
+		return nil
+	}
+
+	if runtime.Spec.Fuse.Metrics.Enabled {
+		// auto allocated metrics port
+		value.Fuse.Args = append(value.Fuse.Args, fmt.Sprintf("-ometrics_port=%d", value.Fuse.MetricsPort))
+	} else {
+		// disable metrics
+		value.Fuse.MetricsPort = 0
+		value.Fuse.Args = append(value.Fuse.Args, "-ometrics_port=0")
+	}
+
+	return nil
+}
+
 func (e *JindoCacheEngine) transformLogConfig(runtime *datav1alpha1.JindoRuntime, value *Jindo) {
 	fsxProperties := map[string]string{
 		"application.report.on":  "true",
@@ -828,7 +877,7 @@ func (e *JindoCacheEngine) transformLogConfig(runtime *datav1alpha1.JindoRuntime
 		"logger.verbose":         "0",
 	}
 
-	fusePropreties := map[string]string{
+	fuseProperties := map[string]string{
 		"logger.dir":            "/tmp/fuse-log",
 		"logger.consolelogger":  "true",
 		"logger.level":          "2",
@@ -846,12 +895,12 @@ func (e *JindoCacheEngine) transformLogConfig(runtime *datav1alpha1.JindoRuntime
 
 	if len(runtime.Spec.Fuse.LogConfig) > 0 {
 		for k, v := range runtime.Spec.Fuse.LogConfig {
-			fusePropreties[k] = v
+			fuseProperties[k] = v
 		}
 	}
 
 	value.LogConfig = fsxProperties
-	value.FuseLogConfig = fusePropreties
+	value.FuseLogConfig = fuseProperties
 }
 
 func (e *JindoCacheEngine) transformFuseNodeSelector(runtime *datav1alpha1.JindoRuntime, value *Jindo) {
@@ -951,7 +1000,6 @@ func (e *JindoCacheEngine) transformFuseArg(runtime *datav1alpha1.JindoRuntime, 
 			fuseArgs = append(fuseArgs, "-oentry_timeout=0")
 			fuseArgs = append(fuseArgs, "-onegative_timeout=0")
 		}
-		fuseArgs = append(fuseArgs, "-ometrics_port=0")
 		fuseArgs = append(fuseArgs, "-ono_symlink")
 	}
 	if runtime.Spec.Master.Disabled && runtime.Spec.Worker.Disabled {
@@ -1051,22 +1099,28 @@ func (e *JindoCacheEngine) transformToken(value *Jindo) {
 	value.Master.TokenProperties = properties
 }
 
-func (e *JindoCacheEngine) allocatePorts(value *Jindo) error {
+func (e *JindoCacheEngine) allocatePorts(runtime *datav1alpha1.JindoRuntime, value *Jindo) error {
 
 	// if not usehostnetwork then use default port
 	// usehostnetwork to choose port from port allocator
-	expectedPortNum := 2
 	if !value.UseHostNetwork {
 		value.Master.Port.Rpc = DEFAULT_MASTER_RPC_PORT
 		value.Worker.Port.Rpc = DEFAULT_WORKER_RPC_PORT
 		if value.Master.ReplicaCount == JINDO_HA_MASTERNUM {
 			value.Master.Port.Raft = DEFAULT_RAFT_RPC_PORT
 		}
+		if runtime.Spec.Fuse.Metrics.Enabled {
+			value.Fuse.MetricsPort = DEFAULT_FUSE_METRICS_PORT
+		}
 		return nil
 	}
 
+	expectedPortNum := 2
 	if value.Master.ReplicaCount == JINDO_HA_MASTERNUM {
-		expectedPortNum = 3
+		expectedPortNum += 1
+	}
+	if runtime.Spec.Fuse.Metrics.Enabled {
+		expectedPortNum += 1
 	}
 
 	allocator, err := portallocator.GetRuntimePortAllocator()
@@ -1088,6 +1142,10 @@ func (e *JindoCacheEngine) allocatePorts(value *Jindo) error {
 	if value.Master.ReplicaCount == JINDO_HA_MASTERNUM {
 		index++
 		value.Master.Port.Raft = allocatedPorts[index]
+	}
+	if runtime.Spec.Fuse.Metrics.Enabled {
+		index++
+		value.Fuse.MetricsPort = allocatedPorts[index]
 	}
 	return nil
 }

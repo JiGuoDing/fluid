@@ -91,17 +91,21 @@ type unprivilegedMutatorHelper struct {
 	defaultMutatorHelper
 }
 
-func (mutator *unprivilegedMutatorHelper) PrepareMutation() error {
-	if !mutator.options.EnableCacheDir {
-		mutator.transformTemplateWithCacheDirDisabled()
+func (helper *unprivilegedMutatorHelper) PrepareMutation() error {
+	if !helper.options.EnableCacheDir {
+		helper.transformTemplateWithCacheDirDisabled()
 	}
 
-	mutator.transformTemplateWithUnprivilegedSidecarEnabled()
+	helper.transformTemplateWithUnprivilegedSidecarEnabled()
 
-	if !mutator.options.SkipSidecarPostStartInject {
-		if err := mutator.prepareFuseContainerPostStartScript(); err != nil {
+	if !helper.options.SkipSidecarPostStartInject {
+		if err := helper.prepareFuseContainerPostStartScript(); err != nil {
 			return err
 		}
+	}
+
+	if !helper.runtimeInfo.GetFuseMetricsScrapeTarget().Selected(base.SidecarMountMode) {
+		helper.removeFuseMetricsContainerPort()
 	}
 
 	return nil

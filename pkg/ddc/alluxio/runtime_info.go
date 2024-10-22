@@ -29,8 +29,12 @@ func (e *AlluxioEngine) getRuntimeInfo() (base.RuntimeInfoInterface, error) {
 		if err != nil {
 			return e.runtimeInfo, err
 		}
-
-		e.runtimeInfo, err = base.BuildRuntimeInfo(e.name, e.namespace, e.runtimeType, runtime.Spec.TieredStore, base.WithMetadataList(base.GetMetadataListFromAnnotation(runtime)))
+		opts := []base.RuntimeInfoOption{
+			base.WithTieredStore(runtime.Spec.TieredStore),
+			base.WithMetadataList(base.GetMetadataListFromAnnotation(runtime)),
+			base.WithAnnotations(runtime.Annotations),
+		}
+		e.runtimeInfo, err = base.BuildRuntimeInfo(e.name, e.namespace, e.runtimeType, opts...)
 		if err != nil {
 			return e.runtimeInfo, err
 		}
@@ -63,7 +67,7 @@ func (e *AlluxioEngine) getRuntimeInfo() (base.RuntimeInfoInterface, error) {
 					return e.runtimeInfo, nil
 				}
 
-				e.Log.Info("Failed to get dataset when getruntimeInfo")
+				e.Log.Info("Failed to get dataset when getRuntimeInfo")
 				return e.runtimeInfo, err
 			}
 

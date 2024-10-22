@@ -255,6 +255,9 @@ const (
 )
 
 type AffinityStrategy struct {
+	// Specifies the dependent preceding operation in a workflow. If not set, use the operation referred to by RunAfter.
+	// +optional
+	DependOn *ObjectRef `json:"dependOn,omitempty"`
 	// Policy one of: "", "Require", "Prefer"
 	// +optional
 	Policy AffinityPolicy `json:"policy,omitempty"`
@@ -274,7 +277,7 @@ type Require struct {
 	Name string `json:"name"`
 }
 
-type OperationRef struct {
+type ObjectRef struct {
 	// API version of the referent operation
 	// +optional
 	APIVersion string `json:"apiVersion,omitempty"`
@@ -291,6 +294,10 @@ type OperationRef struct {
 	// Namespace specifies the namespace of the referent operation.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+}
+
+type OperationRef struct {
+	ObjectRef `json:",inline"`
 
 	// AffinityStrategy specifies the pod affinity strategy with the referent operation.
 	// +optional
@@ -300,4 +307,13 @@ type OperationRef struct {
 type WaitingStatus struct {
 	// OperationComplete indicates if the preceding operation is complete
 	OperationComplete *bool `json:"operationComplete,omitempty"`
+}
+
+type ClientMetrics struct {
+	// Enabled decides whether to expose client metrics.
+	Enabled bool `json:"enabled,omitempty"`
+	// ScrapeTarget decides which fuse component will be scraped by Prometheus.
+	// It is a list separated by comma where supported items are [MountPod, Sidecar, All (indicates MountPod and Sidecar), None].
+	// Defaults to None when it is not explicitly set.
+	ScrapeTarget string `json:"scrapeTarget,omitempty"`
 }

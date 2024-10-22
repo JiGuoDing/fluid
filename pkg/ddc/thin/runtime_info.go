@@ -35,7 +35,13 @@ func (t *ThinEngine) getRuntimeInfo() (base.RuntimeInfoInterface, error) {
 			return t.runtimeInfo, err
 		}
 
-		t.runtimeInfo, err = base.BuildRuntimeInfo(t.name, t.namespace, t.runtimeType, runtime.Spec.TieredStore, base.WithMetadataList(base.GetMetadataListFromAnnotation(runtime)))
+		opts := []base.RuntimeInfoOption{
+			base.WithTieredStore(runtime.Spec.TieredStore),
+			base.WithMetadataList(base.GetMetadataListFromAnnotation(runtime)),
+			base.WithAnnotations(runtime.Annotations),
+		}
+
+		t.runtimeInfo, err = base.BuildRuntimeInfo(t.name, t.namespace, t.runtimeType, opts...)
 		if err != nil {
 			return t.runtimeInfo, err
 		}

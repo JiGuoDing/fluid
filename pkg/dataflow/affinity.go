@@ -18,6 +18,7 @@ package dataflow
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/common"
@@ -48,14 +49,26 @@ func InjectAffinityByRunAfterOp(c client.Client, runAfter *datav1alpha1.Operatio
 	if runAfter == nil || runAfter.AffinityStrategy.Policy == datav1alpha1.DefaultAffinityStrategy {
 		return currentAffinity, nil
 	}
-	precedingOpNamespace := opNamespace
-	if len(runAfter.Namespace) != 0 {
-		precedingOpNamespace = runAfter.Namespace
+
+	// if not specified, use the runAfter ObjectRef as dependent affinity operation
+	dependOnOp := runAfter.AffinityStrategy.DependOn
+	if dependOnOp == nil {
+		dependOnOp = &runAfter.ObjectRef
 	}
 
-	precedingOpStatus, err := utils.GetPrecedingOperationStatus(c, runAfter, precedingOpNamespace)
+	precedingOpNamespace := opNamespace
+	if len(dependOnOp.Namespace) != 0 {
+		precedingOpNamespace = dependOnOp.Namespace
+	}
+
+	precedingOpStatus, err := utils.GetPrecedingOperationStatus(c, dependOnOp, precedingOpNamespace)
 	if err != nil {
 		return currentAffinity, err
+	}
+
+	// ensure the dependent operation was completed, the outer caller will record the event.
+	if precedingOpStatus.Phase != common.PhaseComplete {
+		return nil, errors.New(fmt.Sprintf("dependOn operation %s status is %s, not completed.", dependOnOp.Name, precedingOpStatus.Phase))
 	}
 
 	if precedingOpStatus.NodeAffinity == nil {

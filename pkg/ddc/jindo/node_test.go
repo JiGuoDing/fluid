@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/fluid-cloudnative/fluid/api/v1alpha1"
+	"github.com/fluid-cloudnative/fluid/pkg/common"
 	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/fake"
 	appsv1 "k8s.io/api/apps/v1"
@@ -46,7 +47,7 @@ func getTestJindoEngineNode(client client.Client, name string, namespace string,
 	}
 	if withRunTime {
 		engine.runtime = &v1alpha1.JindoRuntime{}
-		engine.runtimeInfo, _ = base.BuildRuntimeInfo(name, namespace, "Jindo", v1alpha1.TieredStore{})
+		engine.runtimeInfo, _ = base.BuildRuntimeInfo(name, namespace, common.JindoRuntime)
 	}
 	return engine
 }
@@ -81,7 +82,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid1",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "jindofs",
+								"role":    "jindofs-worker",
+								"release": "spark",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{
 					{
@@ -98,6 +107,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "jindofs",
 								"role":             "jindofs-worker",
+								"release":          "spark",
 								"fluid.io/dataset": "big-data-spark",
 							},
 						},
@@ -130,7 +140,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid2",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "jindofs",
+								"role":    "jindofs-worker",
+								"release": "hbase",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{
 					{
@@ -147,6 +165,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "jindofs",
 								"role":             "jindofs-worker",
+								"release":          "hbase",
 								"fluid.io/dataset": "big-data-hbase",
 							},
 						},
@@ -186,7 +205,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid3",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "jindofs",
+								"role":    "jindofs-worker",
+								"release": "hbase-a",
+							},
+						},
+					},
 				},
 				pods: []*v1.Pod{
 					{
@@ -196,6 +223,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "jindofs",
 								"role":             "jindofs-worker",
+								"release":          "hbase-a",
 								"fluid.io/dataset": "big-data-hbase-a",
 							},
 						},
@@ -235,7 +263,15 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						Namespace: "big-data",
 						UID:       "uid3",
 					},
-					Spec: appsv1.StatefulSetSpec{},
+					Spec: appsv1.StatefulSetSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app":     "jindofs",
+								"role":    "jindofs-worker",
+								"release": "deprecated",
+							},
+						},
+					},
 				},
 				ds: &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{
 					Name:      "deprecated-jindofs-worker",
@@ -250,7 +286,8 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 							Labels: map[string]string{
 								"app":              "jindofs",
 								"role":             "jindofs-worker",
-								"fluid.io/dataset": "big-data-hbase-a",
+								"release":          "deprecated",
+								"fluid.io/dataset": "big-data-deprecated",
 							},
 						},
 						Spec: v1.PodSpec{
@@ -267,7 +304,7 @@ func TestSyncScheduleInfoToCacheNodes(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "node7",
 							Labels: map[string]string{
-								"fluid.io/s-default-hbase-a": "true",
+								"fluid.io/s-default-deprecated": "true",
 							},
 						},
 					},

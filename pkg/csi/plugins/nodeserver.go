@@ -138,13 +138,27 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// 1. Wait the runtime fuse ready and check the sub path existence
-	err = utils.CheckMountReadyAndSubPathExist(fluidPath, mountType, subPath)
+	useSymlink := useSymlink(req)
+
+	skipCheckMountReadyMountModeSelector, err := base.ParseMountModeSelectorFromStr(req.GetVolumeContext()[common.AnnotationSkipCheckMountReadyTarget])
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if skipCheckMountReadyMountModeSelector.Selected(base.MountPodMountMode) {
+		// 1. only mountPod involved csi-plugin
+		// 2. skip check mount ready for mountPod, for the scenario that dataset.spec.mounts is nil
+		// 3. if check mount ready is skipped for mountPod, symlink is forced to use, avoiding that unPublishVolume error occurs
+		useSymlink = true
+	} else {
+		err = utils.CheckMountReadyAndSubPathExist(fluidPath, mountType, subPath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 
 	// use symlink
-	if useSymlink(req) {
+	if useSymlink {
 		if err := utils.CreateSymlink(targetPath, mountPath); err != nil {
 			return nil, err
 		}
@@ -200,12 +214,16 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 	defer ns.locks.Release(targetPath)
 
-	exists, err := mount.PathExists(targetPath)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "NodeUnpublishVolume: failed to check if path %s exists: %v", targetPath, err)
-	}
-
+	exists, err := utils.MountPathExists(targetPath)
+	// Four cases are possible here, CSI plugin should continue to umount target path for the first two cases:
+	// 1. exists=true, err=nil => meaning path exists.
+	// 2. exists=true, err!=nil => meaning path exists with a corrupted mount point on it.
+	// 3. exists=false, err=nil => meaning path does not exist, return OK.
+	// 4. exists=false, err!=nil => meaning failure to check whether path exists, return ERR.
 	if !exists {
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeUnpublishVolume: failed to check if path %s exists: %v", targetPath, err)
+		}
 		glog.V(0).Infof("NodeUnpublishVolume: succeed because target path %s doesn't exist", targetPath)
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
@@ -253,7 +271,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		glog.Errorf("NodeUnpublishVolume: failed when cleanupMountPoint on path %s: %v", targetPath, err)
 		return nil, status.Errorf(codes.Internal, "NodeUnpublishVolume: failed when cleanupMountPoint on path %s: %v", targetPath, err)
 	} else {
-		glog.V(4).Infof("NodeUnpublishVolume: succeed in umounting  %s", targetPath)
+		glog.V(4).Infof("NodeUnpublishVolume: succeed in umounting %s", targetPath)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -399,7 +417,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, errors.Wrapf(err, "NodeStageVolume: error when patching labels on node %s", ns.nodeId)
 	}
 
-	glog.Infof("NodeStageVolume: NodeStage succeded with VolumeId: %s, and added NodeLabel: %s", volumeId, fuseLabelKey)
+	glog.Infof("NodeStageVolume: NodeStage succeeded with VolumeId: %s, and added NodeLabel: %s", volumeId, fuseLabelKey)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -522,9 +540,9 @@ func checkMountInUse(volumeName string) (bool, error) {
 	glog.Infoln(string(stdoutStderr))
 
 	if err != nil {
-		if exiterr, ok := err.(*exec.ExitError); ok {
-			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-				exitStatus := status.ExitStatus()
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if waitStatus, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+				exitStatus := waitStatus.ExitStatus()
 				if exitStatus == 1 {
 					// grep not found any mount entry
 					err = nil
@@ -542,7 +560,7 @@ func checkMountInUse(volumeName string) (bool, error) {
 	return inUse, err
 }
 
-// cleanUpBrokenMountPoint stats the given mountPoint and umounts it if it's broken mount point(i.e. Stat with errNo 107[Trasport Endpoint is not Connected]).
+// cleanUpBrokenMountPoint stats the given mountPoint and umounts it if it's broken mount point(i.e. Stat with errNo 107[Transport Endpoint is not Connected]).
 func cleanUpBrokenMountPoint(mountPoint string) error {
 	_, err := os.Stat(mountPoint)
 	if err != nil {
@@ -609,7 +627,7 @@ func (ns *nodeServer) prepareSessMgr(workDir string) error {
 	return nil
 }
 
-// useSymlink for nodePublishVolume if enviroment varible has been set or pv has attribute
+// useSymlink for nodePublishVolume if environment variable has been set or pv has attribute
 func useSymlink(req *csi.NodePublishVolumeRequest) bool {
 	return os.Getenv("NODEPUBLISH_METHOD") == common.NodePublishMethodSymlink || req.GetVolumeContext()[common.NodePublishMethod] == common.NodePublishMethodSymlink
 }
