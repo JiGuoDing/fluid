@@ -35,13 +35,13 @@ const (
 	defaultSyncRetryDuration time.Duration = time.Duration(5 * time.Second)
 )
 
-// Use compiler to check if the struct implements all the interface
+// Use compiler to check if the struct implements all the interface ('s functions)
 var _ Engine = (*TemplateEngine)(nil)
 
 type TemplateEngine struct {
 	Implement
-	Id string
 	client.Client
+	Id                string
 	Log               logr.Logger
 	Context           cruntime.ReconcileRequestContext
 	syncRetryDuration time.Duration

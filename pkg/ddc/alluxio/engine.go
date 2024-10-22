@@ -70,6 +70,9 @@ func Build(id string, ctx cruntime.ReconcileRequestContext) (base.Engine, error)
 	// var implement base.Implement = engine
 	// engine.TemplateEngine = template
 	if ctx.Runtime != nil {
+		// 类型断言，实现接口的类型转换 Runtime(client.Object -> *AlluxioRuntime)
+		// 成功则runtime存储*AlluxioRuntime类型的实例，ok为true
+		// 若失败则runtime为nil，且ok为false
 		runtime, ok := ctx.Runtime.(*datav1alpha1.AlluxioRuntime)
 		if !ok {
 			return nil, fmt.Errorf("engine %s is failed to parse", ctx.Name)
