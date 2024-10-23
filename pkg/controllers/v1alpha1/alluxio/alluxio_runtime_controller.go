@@ -44,6 +44,7 @@ import (
 const controllerName string = "AlluxioRuntimeController"
 
 // Use compiler to check if the struct implements all the interface
+// 确保 *RuntimeReconciler 类型确实实现了 controllers.RuntimeReconcilerInterface 接口
 var _ controllers.RuntimeReconcilerInterface = (*RuntimeReconciler)(nil)
 
 // RuntimeReconciler reconciles a AlluxioRuntime object

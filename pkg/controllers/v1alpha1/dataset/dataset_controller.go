@@ -57,7 +57,7 @@ type DatasetReconciler struct {
 	ResyncPeriod time.Duration
 }
 
-// Request and Context all in one
+// The Context, Dataset and some properites of the DatasetReconciler
 type reconcileRequestContext struct {
 	context.Context
 	Log     logr.Logger
