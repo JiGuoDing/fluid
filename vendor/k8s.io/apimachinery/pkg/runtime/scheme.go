@@ -43,44 +43,70 @@ import (
 //
 // Schemes are not expected to change at runtime and are only threadsafe after
 // registration is complete.
+/*
+功能：Scheme 定义了用于序列化和反序列化 API 对象的方法，建立了一个类型注册表，用于将组、版本和种类信息转换为 Go 语言的架构（schemas），并且能够在不同版本的 Go 架构之间进行映射。
+用途：它是版本化 API 和随时间变化的版本化配置的基础。
+关键概念
+Type：在这里，Type 是指特定的 Go 结构体，它代表了一种数据结构。
+Version：Version 是某个特定 Type 表示的一个时点标识符，通常是向后兼容的。也就是说，在同一版本下，Type 的结构应该保持稳定。
+Kind：Kind 是该 Type 在特定版本中的唯一名称，它帮助识别不同类型的数据对象。
+Group：Group 表示一组版本、种类和类型，这些内容随着时间的推移而演变。
+Unversioned Type：Unversioned Type 是一种尚未正式绑定到特定版本的类型，承诺与未来版本的向后兼容性。它相当于一个不希望将来会破坏的“v1”类型。
+运行时与线程安全
+不变性：Scheme 被认为在运行时不会改变，意味着一旦注册完成，它的结构和内容就不会被修改。
+线程安全：在注册完成之后，Scheme 可以被多个 goroutine 安全地访问。
+*/
 type Scheme struct {
 	// gvkToType allows one to figure out the go type of an object with
 	// the given version and name.
+	// GroupVersionKind(资源的组、版本、类型)获取对应的go类型
+	// 通过这个映射(GroupVersionKind -> GoType)，可以确定某个特定版本和种类的对象的Go类型
 	gvkToType map[schema.GroupVersionKind]reflect.Type
 
 	// typeToGVK allows one to find metadata for a given go object.
 	// The reflect.Type we index by should *not* be a pointer.
+	//用于反向查找，将Go类型映射到其对应的GVK，其中reflect.Type不应是指针类型
 	typeToGVK map[reflect.Type][]schema.GroupVersionKind
 
 	// unversionedTypes are transformed without conversion in ConvertToVersion.
+	// 存储不带版本的类型，这些类型在调用ConvertToVersion时不会经过转换
 	unversionedTypes map[reflect.Type]schema.GroupVersionKind
 
 	// unversionedKinds are the names of kinds that can be created in the context of any group
 	// or version
 	// TODO: resolve the status of unversioned types.
+	// 存储可以在任何组或版本上下文中创建的种类的名称（Kind）和其对应的Go类型，
+	// 这个字段帮助处理不受版本限制的资源
 	unversionedKinds map[string]reflect.Type
 
 	// Map from version and resource to the corresponding func to convert
 	// resource field labels in that version to internal version.
+	// 存储从资源字段标签到内部版本的转换函数。
+	// 用于将不同版本的资源字段标签标准化。
 	fieldLabelConversionFuncs map[schema.GroupVersionKind]FieldLabelConversionFunc
 
 	// defaulterFuncs is a map to funcs to be called with an object to provide defaulting
 	// the provided object must be a pointer.
+	// 存储默认值函数，用于为提供的对象提供默认值。这些函数必须接收指针类型的对象。
 	defaulterFuncs map[reflect.Type]func(interface{})
 
 	// converter stores all registered conversion functions. It also has
 	// default converting behavior.
+	// 存储注册的所有转换函数，并提供默认的转换行为。用于在不同版本之间转换对象的字段。
 	converter *conversion.Converter
 
 	// versionPriority is a map of groups to ordered lists of versions for those groups indicating the
 	// default priorities of these versions as registered in the scheme
+	// 存储组的版本优先级的有序列表，指示这些版本在注册方案中的默认优先级。
 	versionPriority map[string][]string
 
 	// observedVersions keeps track of the order we've seen versions during type registration
+	// 跟踪在类型注册过程中观察到的版本顺序。这可以用于处理版本演变的情况。
 	observedVersions []schema.GroupVersion
 
 	// schemeName is the name of this scheme.  If you don't specify a name, the stack of the NewScheme caller will be used.
 	// This is useful for error reporting to indicate the origin of the scheme.
+	// 表示该方案的名称。如果未指定名称，将使用调用 NewScheme 的调用栈作为名称。这在错误报告时很有用，以指示方案的来源。
 	schemeName string
 }
 

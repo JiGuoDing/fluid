@@ -19,10 +19,17 @@ package app
 import "github.com/spf13/cobra"
 
 func NewAlluxioFSCommand() *cobra.Command {
+	// 创建一个新的 Cobra 命令结构体实例
 	cmd := &cobra.Command{
-		Use:   "alluxioruntime-controller",
+		// 指定命令的名称，用户在命令行中输入这个命令名称将对应于这个字段，用户可以通过alluxioruntime-controller调用这个命令
+		Use: "alluxioruntime-controller",
+		// 提供命令的简短描述
 		Short: "Controller for alluxioruntime",
+		// 定义该命令执行时运行的函数
+		// Run: func(){}
 	}
+
+	// 添加子命令
 	cmd.AddCommand(versionCmd, alluxioCmd)
 
 	return cmd
