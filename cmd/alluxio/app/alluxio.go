@@ -79,8 +79,9 @@ var alluxioCmd = &cobra.Command{
 	},
 }
 
+// 将 Kubernetes 客户端的默认 Scheme 和 datav1alpha1 API 类型注册到 scheme 中。
+// 即将Kubernetes的内置类型和fluid定义的自定义资源定义（CRD）类型注册到scheme中。
 func init() {
-	// 将 Kubernetes 客户端的默认 Scheme 和 datav1alpha1 API 类型注册到 scheme 中。
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = datav1alpha1.AddToScheme(scheme)
 	// 对 alluxioCmd 命令注册和配置一系列的标志（flags），通过命令行参数提供对一些控制器配置项的自定义控制
