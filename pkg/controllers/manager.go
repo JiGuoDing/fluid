@@ -63,6 +63,7 @@ func NewFluidControllerRateLimiter(
 }
 
 // GetConfigOrDieWithQPSAndBurst sets client-side QPS and burst in kube config.
+// 用于获取Kuber
 func GetConfigOrDieWithQPSAndBurst(qps float32, burst int) *rest.Config {
 	cfg := ctrl.GetConfigOrDie()
 	if qps > 0 {

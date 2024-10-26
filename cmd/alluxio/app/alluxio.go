@@ -74,6 +74,7 @@ var (
 var alluxioCmd = &cobra.Command{
 	Use:   "start",
 	Short: "start alluxioruntime-controller in Kubernetes",
+	// 将handle函数赋值给alluxioCmd的Run属性实现handle函数被指定为alluxioCmd命令的执行函数
 	Run: func(cmd *cobra.Command, args []string) {
 		handle()
 	},
@@ -123,8 +124,12 @@ func init() {
 }
 
 func handle() {
+	// 调用fluid包中的logVersion函数打印程序的版本信息
 	fluid.LogVersion()
 
+	// 配置日志记录器，使用zap库来创建一个新的日志记录器
+	// 并根据是否处于开发模式来设置不同的日志配置
+	// 若不是开发模式，将使用生产环境的编码器配置
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = development
 	}, func(o *zap.Options) {
@@ -138,14 +143,20 @@ func handle() {
 		}
 	}))
 
+	// 若程序处于开发模式，将初始化一个pprof服务器，用于性能分析。
+	// pprofAddr是pprof服务器绑定的地址
 	utils.NewPprofServer(setupLog, pprofAddr, development)
 
 	// the default webhook server port is 9443, no need to set
+	// 创建一个新的控制器管理器实例。
 	mgr, err := ctrl.NewManager(controllers.GetConfigOrDieWithQPSAndBurst(kubeClientQPS, kubeClientBurst), ctrl.Options{
+		// 传入之前定义的scheme
 		Scheme: scheme,
+		// 性能指标地址
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
 		},
+		// 是否启用领导人选举机制
 		LeaderElection:          enableLeaderElection,
 		LeaderElectionNamespace: leaderElectionNamespace,
 		LeaderElectionID:        "alluxio.data.fluid.io",

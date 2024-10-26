@@ -84,7 +84,7 @@ func GetConfig() (*rest.Config, error) {
 // It also applies saner defaults for QPS and burst based on the Kubernetes
 // controller manager defaults (20 QPS, 30 burst)
 //
-// Config precedence:
+// Config precedence(优先级):
 //
 // * --kubeconfig flag pointing at a file
 //
@@ -93,6 +93,13 @@ func GetConfig() (*rest.Config, error) {
 // * In-cluster config if running in cluster
 //
 // * $HOME/.kube/config if exists.
+/*
+创建一个*rest.Config对象，用于配置与Kubernetes API服务器通信所需的参数。
+为与特定上下文的Kubernetes API服务器通信创建一个配置
+这个函数考虑了不同的配置来源，并设置了一些默认值，特别是针对QPS(每秒查询率 20)和Burst(突发流量 30)的值
+如果设置了 --kubeconfig 参数，将使用该位置的kubeconfig文件，否则将假设在集群中运行，
+并使用集群提供的kubeconfig
+*/
 func GetConfigWithContext(context string) (*rest.Config, error) {
 	cfg, err := loadConfig(context)
 	if err != nil {
@@ -115,12 +122,15 @@ var loadInClusterConfig = rest.InClusterConfig
 // loadConfig loads a REST Config as per the rules specified in GetConfig.
 func loadConfig(context string) (config *rest.Config, configErr error) {
 	// If a flag is specified with the config location, use that
+	// 如果通过 --kubeconfig 指定了配置文件的位置
 	if len(kubeconfig) > 0 {
 		return loadConfigWithContext("", &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}, context)
 	}
 
 	// If the recommended kubeconfig env variable is not specified,
 	// try the in-cluster config.
+	// 环境变量 KUBECONFIG 未指定（这是 Kubernetes 推荐的配置路径环境变量）
+	// 则尝试使用集群内的配置
 	kubeconfigPath := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
 	if len(kubeconfigPath) == 0 {
 		c, err := loadInClusterConfig()
@@ -130,6 +140,7 @@ func loadConfig(context string) (config *rest.Config, configErr error) {
 
 		defer func() {
 			if configErr != nil {
+				// 确保在函数返回之前，如果 configErr 不为 nil ，那么会记录一条错误日志。
 				log.Error(err, "unable to load in-cluster config")
 			}
 		}()
@@ -145,16 +156,28 @@ func loadConfig(context string) (config *rest.Config, configErr error) {
 	// TODO(jlanford): could this be done upstream?
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if _, ok := os.LookupEnv("HOME"); !ok {
+		// HOME 环境变量未设置
 		u, err := user.Current()
 		if err != nil {
 			return nil, fmt.Errorf("could not get current user: %w", err)
 		}
+		// 设置 Kubernetes 配置文件的搜索路径
+		// Precedence 按优先级顺序搜索配置文件的路径的列表
+		// 将当前用户的主目录下的 Kubernetes 推荐配置文件路径追加到 loadingRules.Precedence 列表中
+		//将用户的主目录(u.HomeDir)、推荐的子目录(.kube)和推荐的文件名(config)连接起来，形成一个完整的配置文件路径。
 		loadingRules.Precedence = append(loadingRules.Precedence, filepath.Join(u.HomeDir, clientcmd.RecommendedHomeDir, clientcmd.RecommendedFileName))
 	}
 
 	return loadConfigWithContext("", loadingRules, context)
 }
 
+/*
+函数使用 clientcmd.NewNonInteractiveDeferredLoadingClientConfig 创建一个新的客户端配置对象，
+这个对象根据提供的加载器和覆盖配置来加载和获取客户端配置。
+
+函数将 API 服务器的 URL 和当前上下文传递给 ConfigOverrides 对象，
+然后调用 ClientConfig 方法来获取实际的 *rest.Config 对象。
+*/
 func loadConfigWithContext(apiServerURL string, loader clientcmd.ClientConfigLoader, context string) (*rest.Config, error) {
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		loader,
