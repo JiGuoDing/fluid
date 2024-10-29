@@ -18,8 +18,9 @@ package app
 
 import (
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/spf13/cobra"
 	zapOpt "go.uber.org/zap"
@@ -106,6 +107,7 @@ func init() {
 
 func handle() {
 	fluid.LogVersion()
+	// 获取fluid资源发现器
 	fluidDiscovery := discovery.GetFluidDiscovery()
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
@@ -121,9 +123,11 @@ func handle() {
 		}
 	}))
 
+	// 如果提供了pprof地址，创建pprof服务器
 	utils.NewPprofServer(setupLog, pprofAddr, development)
 
 	// the default webhook server port is 9443, no need to set
+	// 创建控制器管理器
 	mgr, err := ctrl.NewManager(controllers.GetConfigOrDieWithQPSAndBurst(kubeClientQPS, kubeClientBurst), ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -140,6 +144,7 @@ func handle() {
 		os.Exit(1)
 	}
 
+	// 解析控制器工作队列的同步回退策略
 	defaultSyncBackoff, err := time.ParseDuration(controllerWorkqueueDefaultSyncBackoffStr)
 	if err != nil {
 		setupLog.Error(err, "workqueue-default-sync-backoff is not a valid duration, please use string like \"100ms\", \"5s\", \"3m\", ...")
@@ -152,11 +157,13 @@ func handle() {
 		os.Exit(1)
 	}
 
+	// 设置控制器选项
 	controllerOptions := controller.Options{
 		MaxConcurrentReconciles: maxConcurrentReconciles,
 		RateLimiter:             controllers.NewFluidControllerRateLimiter(defaultSyncBackoff, maxSyncBackoff, controllerWorkqueueQPS, controllerWorkqueueBurst),
 	}
 
+	// 注册Dataset的Reconciler
 	setupLog.Info("Registering Dataset reconciler to Fluid controller manager.")
 	if err = (&datasetctl.DatasetReconciler{
 		Client:       mgr.GetClient(),
@@ -169,6 +176,7 @@ func handle() {
 		os.Exit(1)
 	}
 
+	// 根据dataload是否启用，注册其Reconciler
 	if fluidDiscovery.ResourceEnabled("dataload") {
 		setupLog.Info("Registering DataLoad reconciler to Fluid controller manager.")
 		if err = (dataloadctl.NewDataLoadReconciler(mgr.GetClient(),
@@ -181,6 +189,7 @@ func handle() {
 		}
 	}
 
+	// 根据databackup是否启用，注册其Reconciler
 	if fluidDiscovery.ResourceEnabled("databackup") {
 		setupLog.Info("Registering DataBackup reconciler to Fluid controller manager.")
 		if err = (databackupctl.NewDataBackupReconciler(mgr.GetClient(),
@@ -193,6 +202,7 @@ func handle() {
 		}
 	}
 
+	// 根据datamigrate是否启用，注册其Reconciler
 	if fluidDiscovery.ResourceEnabled("datamigrate") {
 		setupLog.Info("Registering DataMigrate reconciler to Fluid controller manager.")
 		if err = (datamigratectl.NewDataMigrateReconciler(mgr.GetClient(),
@@ -205,6 +215,7 @@ func handle() {
 		}
 	}
 
+	// 根据dataprocess是否启用，注册其Reconciler
 	if fluidDiscovery.ResourceEnabled("dataprocess") {
 		setupLog.Info("Registering DataProcess reconciler to Fluid controller manager.")
 		if err = (dataprocessctl.NewDataProcessReconciler(mgr.GetClient(),
@@ -217,6 +228,7 @@ func handle() {
 		}
 	}
 
+	// 根据dataflow是否启用，注册其Reconciler
 	if dataflowctl.DataFlowEnabled() {
 		setupLog.Info("Registering DataFlow reconciler to Fluid controller manager.")
 		if err = (dataflowctl.NewDataFlowReconciler(mgr.GetClient(),
@@ -229,6 +241,7 @@ func handle() {
 		}
 	}
 
+	// 启动控制器管理器，开始监听和处理事件
 	setupLog.Info("starting dataset-controller")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running dataset-controller")

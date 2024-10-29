@@ -272,6 +272,7 @@ func (r *DatasetReconciler) addFinalizerAndRequeue(ctx reconcileRequestContext) 
 	return utils.RequeueImmediatelyUnlessGenerationChanged(prevGeneration, ctx.Dataset.ObjectMeta.GetGeneration())
 }
 
+// 返回一个有manager的controller builder
 func (r *DatasetReconciler) SetupWithManager(mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
