@@ -29,26 +29,35 @@ import (
 // Backoff holds parameters applied to a Backoff function.
 type Backoff struct {
 	// The initial duration.
+	// 初始等待时间
 	Duration time.Duration
 	// Duration is multiplied by factor each iteration, if factor is not zero
 	// and the limits imposed by Steps and Cap have not been reached.
 	// Should not be negative.
 	// The jitter does not contribute to the updates to the duration parameter.
+	// 乘数因子，每次重试后会将 Duration 按 Factor 进行乘积增长。
+	// 只要 Steps 和 Cap 的限制还没有达到，每次循环的等待时间将乘以 Factor，以此来实现指数级增长。
 	Factor float64
 	// The sleep at each iteration is the duration plus an additional
 	// amount chosen uniformly at random from the interval between
 	// zero and `jitter*duration`.
+	// 用于添加随机抖动的参数，表示每次等待时间可以加上一个随机量，
+	// 使得实际等待时间在 Duration 和 Duration + (Jitter * Duration) 之间浮动。
+	// 这样可以防止多个实例在重试时发生“惊群效应”（多个实例同时重试）。
 	Jitter float64
 	// The remaining number of iterations in which the duration
 	// parameter may change (but progress can be stopped earlier by
 	// hitting the cap). If not positive, the duration is not
 	// changed. Used for exponential backoff in combination with
 	// Factor and Cap.
+	// 剩余的最大重试次数。如果达到此数值或因 Cap 限制达到最大等待时间，则停止重试。
 	Steps int
 	// A limit on revised values of the duration parameter. If a
 	// multiplication by the factor parameter would make the duration
 	// exceed the cap then the duration is set to the cap and the
 	// steps parameter is set to zero.
+	// 等待时间的上限值。当等待时间通过 Factor 更新超过 Cap 时，
+	// 等待时间会被限制在 Cap，并将 Steps 设置为零，避免进一步的延长。
 	Cap time.Duration
 }
 
