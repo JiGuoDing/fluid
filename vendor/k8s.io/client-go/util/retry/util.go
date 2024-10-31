@@ -45,6 +45,8 @@ var DefaultBackoff = wait.Backoff{
 // OnError allows the caller to retry fn in case the error returned by fn is retriable
 // according to the provided function. backoff defines the maximum retries and the wait
 // interval between two retries.
+// 允许 fn 在失败的情况下重新执行，backoff 定义了最大重试次数和重试间隔时间
+// retriable 根据 fn 的失败返回值 error 判断 fn 是否可重新执行
 func OnError(backoff wait.Backoff, retriable func(error) bool, fn func() error) error {
 	var lastErr error
 	err := wait.ExponentialBackoff(backoff, func() (bool, error) {

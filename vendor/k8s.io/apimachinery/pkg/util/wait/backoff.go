@@ -456,16 +456,24 @@ func (j *jitteredBackoffManagerImpl) Backoff() clock.Timer {
 //
 // Since backoffs are often subject to cancellation, we recommend using
 // ExponentialBackoffWithContext and passing a context to the method.
+// 函数实现了一个带有指数退避的条件检查机制
+// 主要目的是在满足特定条件之前，以指数退避的方式多次尝试去检查某个条件是否成立。
 func ExponentialBackoff(backoff Backoff, condition ConditionFunc) error {
+	// 循环检查条件，直到达到最大次数或条件满足
 	for backoff.Steps > 0 {
+		// 执行条件检查，并保护以防止崩溃
 		if ok, err := runConditionWithCrashProtection(condition); err != nil || ok {
+			// 条件满足或出现错误，立即返回
 			return err
 		}
+		// 检查是否已达到最后一次尝试
 		if backoff.Steps == 1 {
 			break
 		}
+		// 计算并休眠一段时间，再次进行条件检查
 		time.Sleep(backoff.Step())
 	}
+	// 如果达到最大尝试次数，返回超时错误
 	return ErrWaitTimeout
 }
 
