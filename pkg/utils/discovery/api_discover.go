@@ -14,6 +14,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// 用于发现和记录 Kubernetes 集群中安装的 Fluid 相关的 CRD
+// 根据这个信息来启用或禁用相应的控制器(Reconciler)
 type fluidDiscovery map[string]bool
 
 var (

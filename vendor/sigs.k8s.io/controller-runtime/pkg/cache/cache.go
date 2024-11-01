@@ -64,6 +64,10 @@ func BlockUntilSynced(shouldBlock bool) InformerGetOption {
 // Cache knows how to load Kubernetes objects, fetch informers to request
 // to receive events for Kubernetes objects (at a low-level),
 // and add indices to fields on the objects stored in the cache.
+//
+// 缓存管理器，负责存储和管理 Kubernetes 资源对象的副本
+// 通过使用缓存，控制器可以减少对 API 服务器的请求次数
+// 从而降低 API 服务器的负载，并提高控制器的响应速度
 type Cache interface {
 	// Reader acts as a client to objects stored in the cache.
 	client.Reader
@@ -99,12 +103,23 @@ type Informers interface {
 }
 
 // Informer allows you to interact with the underlying informer.
+//
+// 用于监听 Kubernetes API 服务器上的特定资源类型的变化，
+// 并在发生变化时通知控制器，这样控制器就可以根据资源的变化来执行相应的操作，
+// 以确保集群的状态与期望状态一致。
+//
+// Informer 会维护一个本地缓存，其中存储了它监听的资源的最新状态，
+// 这样控制器再需要获取资源时，可以直接从本地缓存读取。
 type Informer interface {
 	// AddEventHandler adds an event handler to the shared informer using the shared informer's resync
 	// period. Events to a single handler are delivered sequentially, but there is no coordination
 	// between different handlers.
 	// It returns a registration handle for the handler that can be used to remove
 	// the handler again and an error if the handler cannot be added.
+	//
+	// 将一个 handler 注册到该共享 Informer 中。
+	// 当 Informer监听到与该 handler 关联的资源对象发生变化时（如创建、更新、删除），
+	// 它会调用该 handler 的对应函数。
 	AddEventHandler(handler toolscache.ResourceEventHandler) (toolscache.ResourceEventHandlerRegistration, error)
 
 	// AddEventHandlerWithResyncPeriod adds an event handler to the shared informer using the
@@ -134,6 +149,8 @@ type Informer interface {
 const AllNamespaces = metav1.NamespaceAll
 
 // Options are the optional arguments for creating a new Cache object.
+//
+// 用于配置 cache 的行为
 type Options struct {
 	// HTTPClient is the http client to use for the REST client
 	HTTPClient *http.Client

@@ -128,6 +128,7 @@ func handle() {
 
 	// the default webhook server port is 9443, no need to set
 	// 创建控制器管理器
+	// 创建一个新的控制器管理器，使用给定的配置和选项
 	mgr, err := ctrl.NewManager(controllers.GetConfigOrDieWithQPSAndBurst(kubeClientQPS, kubeClientBurst), ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -151,6 +152,7 @@ func handle() {
 		os.Exit(1)
 	}
 
+	// 解析控制器工作队列的最大同步回退策略
 	maxSyncBackoff, err := time.ParseDuration(controllerWorkqueueMaxSyncBackoffStr)
 	if err != nil {
 		setupLog.Error(err, "workqueue-max-sync-backoff is not a valid duration, please use string like \"100ms\", \"5s\", \"3m\", ...)")
