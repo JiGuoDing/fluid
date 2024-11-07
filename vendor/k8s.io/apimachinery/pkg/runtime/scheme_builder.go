@@ -20,6 +20,8 @@ package runtime
 // code to compile without explicitly referencing generated types. You should
 // declare one in each package that will have generated deep copy or conversion
 // functions.
+//
+// SchemeBuilder 是一个函数列表，这些函数用于向 Scheme 对象添加类型信息、转换函数、默认值函数等。
 type SchemeBuilder []func(*Scheme) error
 
 // AddToScheme applies all the stored functions to the scheme. A non-nil error
