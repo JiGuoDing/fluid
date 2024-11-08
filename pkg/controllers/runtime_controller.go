@@ -53,11 +53,17 @@ import (
 var reconcileTimeout = 10 * time.Minute
 
 // RuntimeReconciler is the default implementation
+//
+// 这个结构体可以看作一个控制器(controller)
 type RuntimeReconciler struct {
+	// 用于与 Kubernetes API 服务器进行交互的客户端
 	client.Client
-	Log      logr.Logger
+	// 用于
+	Log logr.Logger
+	// 用于记录 Kubernetes 事件的事件记录器
 	Recorder record.EventRecorder
 	// Real implement
+	// 实现了 RuntimeReconcilerInterface 接口的具体实现，其包含了处理运行时对象的实际逻辑
 	implement RuntimeReconcilerInterface
 }
 
@@ -78,17 +84,20 @@ func NewRuntimeReconciler(reconciler RuntimeReconcilerInterface, client client.C
 func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestContext) (ctrl.Result, error) {
 
 	// 0. Set context time limit
+	// 设置上下文超时时间
 	ctxWithTimeout, cancel := context.WithTimeout(ctx.Context, reconcileTimeout)
 	defer cancel()
 	ctx.Context = ctxWithTimeout
 
 	// 1.Get the runtime
+	// 获取运行时对象
 	runtime := ctx.Runtime
 	if runtime == nil {
 		return utils.RequeueIfError(fmt.Errorf("failed to find the runtime"))
 	}
 
 	// 2.Validate name is prefixed with a number such as "20-hbase".
+	// 验证运行时名称
 	if errs := validation.IsDNS1035Label(runtime.GetName()); len(runtime.GetName()) > 0 && len(errs) > 0 {
 		err := field.Invalid(field.NewPath("metadata").Child("name"), runtime.GetName(), strings.Join(errs, ","))
 		ctx.Log.Error(err, "Failed to validate runtime name")
@@ -97,6 +106,7 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 	}
 
 	// 3.Get or create the engine
+	// 获取或创建引擎对象
 	engine, err := r.implement.GetOrCreateEngine(ctx)
 	if err != nil {
 		r.Recorder.Eventf(runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Process Runtime error %v", err)
@@ -104,12 +114,14 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 	}
 
 	// 4.Get the ObjectMeta of runtime
+	// 获取运行时对象的元数据
 	objectMeta, err := r.implement.GetRuntimeObjectMeta(ctx)
 	if err != nil {
 		return utils.RequeueIfError(err)
 	}
 
 	// 5.Get the dataset
+	// 获取数据集
 	dataset, err := r.GetDataset(ctx)
 	if err != nil {
 		// r.Recorder.Eventf(ctx.Dataset, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Process Runtime error %v", err)
@@ -126,6 +138,7 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 
 	// 6.Reconcile delete the runtime
 	// it should be after getting the dataset because need to edit the dataset during deleting
+	// 处理运行时对象的删除
 	if !objectMeta.GetDeletionTimestamp().IsZero() {
 		result, err := r.implement.ReconcileRuntimeDeletion(engine, ctx)
 		if err != nil {
@@ -136,6 +149,7 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 
 	if dataset != nil {
 		// 7.Add the OwnerReference of runtime and requeue
+		// 检查并添加数据集的所有者并重新排队
 		if !utils.ContainsOwners(objectMeta.GetOwnerReferences(), dataset) {
 			return r.AddOwnerAndRequeue(ctx, dataset)
 		}
@@ -157,6 +171,7 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 		}
 
 		// 8. Add Finalizer of runtime and requeue
+		// 添加终结器并重新排队
 		if !utils.ContainsString(objectMeta.GetFinalizers(), ctx.FinalizerName) {
 			return r.implement.AddFinalizerAndRequeue(ctx, ctx.FinalizerName)
 		} else {
@@ -170,6 +185,7 @@ func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestConte
 	}
 
 	// 9.Start to reconcile runtime
+	// 开始协调运行时对象
 	return r.implement.ReconcileRuntime(engine, ctx)
 }
 
