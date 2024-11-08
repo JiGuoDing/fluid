@@ -24,17 +24,22 @@ import (
 )
 
 // **************************************************
-// * Common structs/constants for runtimes/datasets *
+// * Common structs/constants for runtimes/datasets
+// * runtimes/datasets 通用的一些结构体和常量
 // **************************************************
 
 // Level describes configurations a tier needs. <br>
 // Refer to <a href="https://docs.alluxio.io/os/user/stable/en/core-services/Caching.html#configuring-tiered-storage">Configuring Tiered Storage</a> for more info
+//
+// 这个结构体用于定义缓存系统中的层级存储配置，允许用户根据不同的介质类型、卷类型、路径和配额来优化存储性能和资源分配
 type Level struct {
 	// Alias string `json:"alias,omitempty"`
 
 	// Medium Type of the tier. One of the three types: `MEM`, `SSD`, `HDD`
 	// +kubebuilder:validation:Enum=MEM;SSD;HDD
-	// +required
+	// +required 必须的
+	//
+	// 表示层级的存储介质类型，是一个枚举类型（MEM SSD HDD）
 	MediumType common.MediumType `json:"mediumtype"`
 
 	// VolumeType is the volume type of the tier. Should be one of the three types: `hostPath`, `emptyDir` and `volumeTemplate`.
@@ -42,16 +47,22 @@ type Level struct {
 	// +kubebuilder:default=hostPath
 	// +kubebuilder:validation:Enum=hostPath;emptyDir
 	// +optional
+	//
+	// 层级的卷类型，是一个枚举类型（hostPath emptyDir volumeTemplate），默认为 hostPath
 	VolumeType common.VolumeType `json:"volumeType"`
 
 	// VolumeSource is the volume source of the tier. It follows the form of corev1.VolumeSource.
 	// For now, users should only specify VolumeSource when VolumeType is set to emptyDir.
+	//
+	// 层级的卷源，只应在 VolumeType 为 emptyDir 时指定 VolumeSource
 	VolumeSource VolumeSource `json:"volumeSource,omitempty"`
 
 	// File paths to be used for the tier. Multiple paths are supported.
 	// Multiple paths should be separated with comma. For example: "/mnt/cache1,/mnt/cache2".
 	// +kubebuilder:validation:MinLength=1
 	// +optional
+	//
+	// 层级的文件路径，多个路径应当用逗号隔开
 	Path string `json:"path,omitempty"`
 
 	// Quota for the whole tier. (e.g. 100Gi)
@@ -59,6 +70,8 @@ type Level struct {
 	// the quota will be equally divided into these paths. If you'd like to
 	// set quota for each, path, see QuotaList for more information.
 	// +optional
+	//
+	// 层级的配额，若该层级存储使用了多个路径，那么配额会均分给这些路径
 	Quota *resource.Quantity `json:"quota,omitempty"`
 
 	// QuotaList are quotas used to set quota on multiple paths. Quotas should be separated with comma.
@@ -68,19 +81,27 @@ type Level struct {
 	// Also note that num of quotas must be consistent with the num of paths defined in Path.
 	// +optional
 	// +kubebuilder:validation:Pattern:="^((\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+)))),)+((\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?)$"
+	//
+	// 用于在多个路径上设置配额的列表，多个配额应当用逗号隔开，列表中的配额将按照 Path 中定义的相同顺序设置到路径上
 	QuotaList string `json:"quotaList,omitempty"`
 
 	// StorageType common.CacheStoreType `json:"storageType,omitempty"`
 	// float64 is not supported, https://github.com/kubernetes-sigs/controller-tools/issues/245
 
 	// Ratio of high watermark of the tier (e.g. 0.9)
+	//
+	// 高水位标记比率
 	High string `json:"high,omitempty"`
 
 	// Ratio of low watermark of the tier (e.g. 0.7)
+	//
+	// 低水位标记比率
 	Low string `json:"low,omitempty"`
 }
 
 // TieredStore is a description of the tiered store
+//
+// 分层存储配置
 type TieredStore struct {
 	// configurations for multiple tiers
 	Levels []Level `json:"levels,omitempty"`

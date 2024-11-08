@@ -409,27 +409,35 @@ func (r *RuntimeReconciler) ForgetMetrics(ctx cruntime.ReconcileRequestContext) 
 // The interface of RuntimeReconciler
 type RuntimeReconcilerInterface interface {
 	// ReconcileRuntimeDeletion reconcile runtime deletion
+	// 处理运行时对象的删除操作，包括清理相关资源和执行必要的善后工作
 	ReconcileRuntimeDeletion(engine base.Engine, ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
 
 	// ReconcileRuntime reconciles runtime
+	// 协调运行时对象的状态，确保其与期望状态一致，可能包括创建、更新或删除相关资源
 	ReconcileRuntime(engine base.Engine, ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
 
 	// AddFinalizerAndRequeue add  finalizer and requeue
+	// 为运行时对象添加终结器并重新排队处理，通常用于在删除对象前执行一些清理操作
 	AddFinalizerAndRequeue(ctx cruntime.ReconcileRequestContext, finalizerName string) (ctrl.Result, error)
 
 	// GetDataset gets the dataset
+	// 获取与运行时对象关联的 dataset 对象，用于获取 dataset 的信息
 	GetDataset(ctx cruntime.ReconcileRequestContext) (*datav1alpha1.Dataset, error)
 
 	// GetOrCreateEngine gets or creates engine
+	// 获取或创建与运行时对象关联的引擎对象，引擎对象负责具体的数据操作和管理
 	GetOrCreateEngine(
 		ctx cruntime.ReconcileRequestContext) (engine base.Engine, err error)
 
 	// RemoveEngine removes engine
+	// 移除与运行时对象关联的引擎，可能运行时对象被删除或不再需要时调用
 	RemoveEngine(ctx cruntime.ReconcileRequestContext)
 
 	// GetRuntimeObjectMeta get runtime objectmeta
+	// 获取运行时对象的元数据
 	GetRuntimeObjectMeta(ctx cruntime.ReconcileRequestContext) (metav1.Object, error)
 
 	// ReconcileInternal
+	// 执行运行时对象的内部协调逻辑，可能包括状态更新、事件记录等操作。
 	ReconcileInternal(ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
 }

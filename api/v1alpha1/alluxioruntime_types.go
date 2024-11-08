@@ -204,7 +204,12 @@ type AlluxioRuntimeSpec struct {
 	// Options for JVM
 	JvmOptions []string `json:"jvmOptions,omitempty"`
 
-	// Tiered storage used by Alluxio
+	// Tiered storage used by Alluxio.
+	//
+	// 分层存储是 Alluxio 用于管理存储资源的一种机制，允许将存储划分为多个层级，每个层级具有不同的存储特性
+	// 如存储介质（内存、磁盘等）、性能（读写速度）和成本。
+	//
+	// 一个典型的TieredStore配置可能包括内存层和磁盘层。
 	TieredStore TieredStore `json:"tieredstore,omitempty"`
 
 	// Management strategies for the dataset to which the runtime is bound

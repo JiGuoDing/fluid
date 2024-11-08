@@ -72,9 +72,13 @@ func NewRuntimeReconciler(client client.Client,
 // Reconcile reconciles alluxio runtime
 // +kubebuilder:rbac:groups=data.fluid.io,resources=alluxioruntimes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=data.fluid.io,resources=alluxioruntimes/status,verbs=get;update;patch
-
+//
+// 两个参数,context 上下文对象，用于控制请求的超时和取消；req 一个请求对象，包含了要调和的资源的名称和命名空间
+// 返回值ctrl.Result 用于指示是否需要重新排队和下一次调和
 func (r *RuntimeReconciler) Reconcile(context context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// 用于跟踪函数的执行时间
 	defer utils.TimeTrack(time.Now(), "Reconcile", "request", req)
+	// ctx 包含了调和过程中需要的各种上下文信息
 	ctx := cruntime.ReconcileRequestContext{
 		Context:        context,
 		Log:            r.Log.WithValues("alluxioruntime", req.NamespacedName),
@@ -89,6 +93,7 @@ func (r *RuntimeReconciler) Reconcile(context context.Context, req ctrl.Request)
 	ctx.Log.V(1).Info("process the request", "request", req)
 
 	//	1.Load the Runtime
+	//  加载运行时
 	runtime, err := r.getRuntime(ctx)
 	if err != nil {
 		if utils.IgnoreNotFound(err) == nil {

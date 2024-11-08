@@ -29,10 +29,12 @@ import (
 // Result contains the result of a Reconciler invocation.
 type Result struct {
 	// Requeue tells the Controller whether to requeue the reconcile key.  Defaults to false.
+	// 是否要重新排队
 	Requeue bool
 
 	// if RequeueAfter greater than 0, tells the Controller to requeue the reconcile key after the Duration.
 	// Implies that Requeue is true, there is no need to set Requeue to true at the same time as RequeueAfter.
+	// 告诉 controller 多久后重新排队
 	RequeueAfter time.Duration
 }
 

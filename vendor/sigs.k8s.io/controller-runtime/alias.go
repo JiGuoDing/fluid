@@ -36,6 +36,8 @@ type Builder = builder.Builder
 // Request contains the information necessary to reconcile a Kubernetes object.  This includes the
 // information to uniquely identify the object - its Name and Namespace.  It does NOT contain information about
 // any specific Event or the object contents itself.
+//
+// 确定要调和的对象（通过命名空间和名称）
 type Request = reconcile.Request
 
 // Result contains the result of a Reconciler invocation.
