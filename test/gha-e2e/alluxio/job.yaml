@@ -10,6 +10,10 @@ spec:
       containers:
         - name: busybox
           image: busybox
+          resources:
+            limits:
+              memory: "512Mi"
+              ephemeral-storage: "5Gi"
           command: ["/bin/sh"]
           args:
           - -c

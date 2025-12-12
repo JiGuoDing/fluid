@@ -22,16 +22,22 @@ import (
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/ctrl"
-	fluiderrs "github.com/fluid-cloudnative/fluid/pkg/errors"
 	cruntime "github.com/fluid-cloudnative/fluid/pkg/runtime"
 	"github.com/fluid-cloudnative/fluid/pkg/utils"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/kubeclient"
+	runtimeOpts "github.com/fluid-cloudnative/fluid/pkg/utils/runtimes/options"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 )
 
 // SyncRuntime syncs the runtime spec
 func (e *JindoFSxEngine) SyncRuntime(ctx cruntime.ReconcileRequestContext) (changed bool, err error) {
+	if runtimeOpts.ShouldSkipSyncingRuntime() {
+		e.Log.V(1).Info("Skipping runtime sync due to CONTROLLER_SKIP_SYNCING_RUNTIME being enabled")
+		return
+	}
+
 	runtime, err := e.getRuntime()
 	if err != nil {
 		return changed, err
@@ -82,6 +88,16 @@ func (e *JindoFSxEngine) syncMasterSpec(ctx cruntime.ReconcileRequestContext, ru
 			return err
 		}
 
+		if master.Spec.UpdateStrategy.Type != appsv1.OnDeleteStatefulSetStrategyType {
+			e.Log.Info("The update strategy of master sts is not OnDelete, it's not safe to sync it")
+			err = kubeclient.UpdateStatefulSetUpdateStrategy(e.Client, master.Name, master.Namespace, appsv1.StatefulSetUpdateStrategy{Type: appsv1.OnDeleteStatefulSetStrategyType})
+			if err != nil {
+				return err
+			}
+			e.Log.Info("Successfully update the update strategy of master sts to OnDelete", "master sts", types.NamespacedName{Name: master.Name, Namespace: master.Namespace})
+			return nil
+		}
+
 		// if len(runtime.Spec.Master.Resources.Limits) == 0 && len(runtime.Spec.Master.Resources.Requests) == 0 {
 		// 	e.Log.V(1).Info("The resource requirement is not set, skip")
 		// 	return nil
@@ -118,11 +134,6 @@ func (e *JindoFSxEngine) syncMasterSpec(ctx cruntime.ReconcileRequestContext, ru
 		return err
 	})
 
-	if fluiderrs.IsDeprecated(err) {
-		e.Log.Info("Warning: the current runtime is created by runtime controller before v0.7.0, update specs are not supported. To support these features, please create a new dataset", "details", err)
-		return false, nil
-	}
-
 	return
 }
 
@@ -136,6 +147,16 @@ func (e *JindoFSxEngine) syncWorkerSpec(ctx cruntime.ReconcileRequestContext, ru
 			types.NamespacedName{Namespace: e.namespace, Name: e.getWorkerName()})
 		if err != nil {
 			return err
+		}
+
+		if workers.Spec.UpdateStrategy.Type != appsv1.OnDeleteStatefulSetStrategyType {
+			e.Log.Info("The update strategy of worker sts is not OnDelete, it's not safe to sync it")
+			err = kubeclient.UpdateStatefulSetUpdateStrategy(e.Client, workers.Name, workers.Namespace, appsv1.StatefulSetUpdateStrategy{Type: appsv1.OnDeleteStatefulSetStrategyType})
+			if err != nil {
+				return err
+			}
+			e.Log.Info("Successfully update the update strategy of worker sts to OnDelete", "worker sts", types.NamespacedName{Name: workers.Name, Namespace: workers.Namespace})
+			return nil
 		}
 
 		// if len(runtime.Spec.Worker.Resources.Limits) == 0 &&
@@ -179,11 +200,6 @@ func (e *JindoFSxEngine) syncWorkerSpec(ctx cruntime.ReconcileRequestContext, ru
 		return err
 	})
 
-	if fluiderrs.IsDeprecated(err) {
-		e.Log.Info("Warning: the current runtime is created by runtime controller before v0.7.0, update specs are not supported. To support these features, please create a new dataset", "details", err)
-		return false, nil
-	}
-
 	return
 }
 
@@ -193,6 +209,16 @@ func (e *JindoFSxEngine) syncFuseSpec(ctx cruntime.ReconcileRequestContext, runt
 		fuses, err := kubeclient.GetDaemonset(e.Client, e.getFuseName(), e.namespace)
 		if err != nil {
 			return err
+		}
+
+		if fuses.Spec.UpdateStrategy.Type != appsv1.OnDeleteDaemonSetStrategyType {
+			e.Log.Info("The update strategy of fuse ds is not OnDelete, it's not safe to sync it")
+			err = kubeclient.UpdateDaemonSetUpdateStrategy(e.Client, fuses.Name, fuses.Namespace, appsv1.DaemonSetUpdateStrategy{Type: appsv1.OnDeleteDaemonSetStrategyType})
+			if err != nil {
+				return err
+			}
+			e.Log.Info("Successfully update the update strategy of fuse ds to OnDelete", "fuse ds", types.NamespacedName{Name: fuses.Name, Namespace: fuses.Namespace})
+			return nil
 		}
 
 		// if len(runtime.Spec.Fuse.Resources.Limits) == 0 && len(runtime.Spec.Fuse.Resources.Requests) == 0 {
@@ -232,9 +258,5 @@ func (e *JindoFSxEngine) syncFuseSpec(ctx cruntime.ReconcileRequestContext, runt
 		return err
 	})
 
-	if fluiderrs.IsDeprecated(err) {
-		e.Log.Info("Warning: the current runtime is created by runtime controller before v0.7.0, update specs are not supported. To support these features, please create a new dataset", "details", err)
-		return false, nil
-	}
 	return
 }

@@ -21,19 +21,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func TransformRequirementsToResources(res corev1.ResourceRequirements) (cRes common.Resources) {
+func TransformCoreV1ResourcesToInternalResources(res corev1.ResourceRequirements) (cRes common.Resources) {
 
-	cRes = common.Resources{}
+	cRes = common.Resources{
+		Requests: make(common.ResourceList, len(res.Requests)),
+		Limits:   make(common.ResourceList, len(res.Limits)),
+	}
 
 	if len(res.Requests) > 0 {
-		cRes.Requests = make(common.ResourceList)
 		for k, v := range res.Requests {
 			cRes.Requests[k] = v.String()
 		}
 	}
 
 	if len(res.Limits) > 0 {
-		cRes.Limits = make(common.ResourceList)
 		for k, v := range res.Limits {
 			cRes.Limits[k] = v.String()
 		}
