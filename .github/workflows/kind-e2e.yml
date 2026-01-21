@@ -9,14 +9,16 @@ on:
       - 'static/**'
 
 # Declare default permissions as read only.
-permissions: read-all
+permissions:
+  contents: read
+  actions: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  GO_VERSION: 1.23.7
+  GO_VERSION: 1.24.12
 
 jobs:
   kind-e2e-test:
@@ -35,7 +37,7 @@ jobs:
 
     steps:
       - name: Set up Go
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version: ${{ env.GO_VERSION }}
       
@@ -74,7 +76,7 @@ jobs:
 
       - name: Dump environment
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: gha-e2e-logs-${{ github.job }}-${{ matrix.kubernetes-version }}
           path: "src/github.com/fluid-cloudnative/fluid/e2e-tmp/testcase-*.tgz"
