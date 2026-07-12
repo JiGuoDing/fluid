@@ -17,73 +17,66 @@ limitations under the License.
 package nodeaffinitywithcache
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 )
 
-func TestTieredLocality_hasRepeatedLocality(t1 *testing.T) {
-	type args struct {
-		pod *corev1.Pod
-	}
+const (
+	testLabelA = "label.a"
+	testLabelB = "label.b"
+)
 
+func TestHasRepeatedLocality(t *testing.T) {
 	tieredLocality := &TieredLocality{
 		Preferred: []Preferred{
-			{
-				Name:   "label.a",
-				Weight: 1,
-			},
-			{
-				Name:   "label.b",
-				Weight: 2,
-			},
+			{Name: testLabelA, Weight: 1},
+			{Name: testLabelB, Weight: 2},
 		},
-		Required: []string{"label.a"},
+		Required: []string{testLabelA},
 	}
 
 	tests := []struct {
 		name string
-		args args
+		pod  *corev1.Pod
 		want bool
 	}{
 		{
 			name: "empty affinity and selector",
-			args: args{
-				pod: &corev1.Pod{
-					Spec: corev1.PodSpec{},
-				},
+			pod: &corev1.Pod{
+				Spec: corev1.PodSpec{},
 			},
 			want: false,
 		},
 		{
 			name: "affinity and empty selector, has same label",
-			args: args{
-				pod: &corev1.Pod{
-					Spec: corev1.PodSpec{
-						Affinity: &corev1.Affinity{
-							NodeAffinity: &corev1.NodeAffinity{
-								RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-									NodeSelectorTerms: []corev1.NodeSelectorTerm{
-										{
-											MatchExpressions: []corev1.NodeSelectorRequirement{
-												{
-													Key:      "label.b",
-													Operator: corev1.NodeSelectorOpIn,
-													Values:   []string{"b.value"},
-												},
+			pod: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      testLabelB,
+												Operator: corev1.NodeSelectorOpIn,
+												Values:   []string{"b.value"},
 											},
 										},
 									},
 								},
-								PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
-									{
-										Weight: 10,
-										Preference: corev1.NodeSelectorTerm{
-											MatchExpressions: []corev1.NodeSelectorRequirement{
-												{
-													Key:      "label.b",
-													Operator: corev1.NodeSelectorOpIn,
-													Values:   []string{"b.value"},
-												},
+							},
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+								{
+									Weight: 10,
+									Preference: corev1.NodeSelectorTerm{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      testLabelB,
+												Operator: corev1.NodeSelectorOpIn,
+												Values:   []string{"b.value"},
 											},
 										},
 									},
@@ -97,12 +90,10 @@ func TestTieredLocality_hasRepeatedLocality(t1 *testing.T) {
 		},
 		{
 			name: "node selector with same label",
-			args: args{
-				pod: &corev1.Pod{
-					Spec: corev1.PodSpec{
-						NodeSelector: map[string]string{
-							"label.a": "a-value",
-						},
+			pod: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					NodeSelector: map[string]string{
+						testLabelA: "a-value",
 					},
 				},
 			},
@@ -110,23 +101,21 @@ func TestTieredLocality_hasRepeatedLocality(t1 *testing.T) {
 		},
 		{
 			name: "node selector without same label",
-			args: args{
-				pod: &corev1.Pod{
-					Spec: corev1.PodSpec{
-						NodeSelector: map[string]string{
-							"label.c": "a-value",
-						},
+			pod: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					NodeSelector: map[string]string{
+						"label.c": "a-value",
 					},
 				},
 			},
 			want: false,
 		},
 	}
-	for _, tt := range tests {
-		t1.Run(tt.name, func(t1 *testing.T) {
-			if got := tieredLocality.hasRepeatedLocality(tt.args.pod); got != tt.want {
-				t1.Errorf("hasRepeatedLocality() = %v, want %v", got, tt.want)
-			}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tieredLocality.hasRepeatedLocality(tc.pod)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

@@ -81,7 +81,21 @@ func (t *TemplateEngine) Sync(ctx cruntime.ReconcileRequestContext) (err error) 
 		return
 	}
 
-	// 6. Update dataset mount point
+	// 6. Sync dataset mounts
+	// TODO: SyncDatasetMounts() and UpdateUFS() should be merged in future refactoring as they describe a similar workflow
+	var shouldSyncDatasetMounts bool
+	shouldSyncDatasetMounts, err = t.Implement.ShouldSyncDatasetMounts()
+	if err != nil {
+		return
+	}
+	if shouldSyncDatasetMounts {
+		err = t.Implement.SyncDatasetMounts()
+		if err != nil {
+			return
+		}
+	}
+
+	// 7. Update dataset mount point
 	if permitSyncEngineStatus {
 		ufsToUpdate := t.Implement.ShouldUpdateUFS()
 		if ufsToUpdate != nil {
@@ -104,6 +118,9 @@ func (t *TemplateEngine) Sync(ctx cruntime.ReconcileRequestContext) (err error) 
 	return t.Implement.SyncScheduleInfoToCacheNodes()
 }
 
+// setTimeOfLastSync updates the synchronization timestamp for the TemplateEngine.
+// This function sets the internal timeOfLastSync field to the current time and
+// logs the updated time value for tracking purposes.
 func (t *TemplateEngine) setTimeOfLastSync() {
 	t.timeOfLastSync = time.Now()
 	t.Log.V(1).Info("Set timeOfLastSync", "timeOfLastSync", t.timeOfLastSync)

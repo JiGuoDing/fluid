@@ -19,6 +19,7 @@ package kubeclient
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -46,11 +47,14 @@ import (
 // https://github.com/kubernetes/kubernetes/blob/v1.6.1/test/e2e/framework/exec_util.go
 // Global variables
 var (
-	clientset      *kubernetes.Clientset
-	restConfig     *restclient.Config
-	log            logr.Logger = ctrl.Log.WithName("kubeclient")
-	kubeconfigPath             = "~/.kube/config"
-	mutex                      = &sync.Mutex{}
+	clientset                 *kubernetes.Clientset
+	restConfig                *restclient.Config
+	log                       logr.Logger = ctrl.Log.WithName("kubeclient")
+	kubeconfigPath                        = "~/.kube/config"
+	mutex                                 = &sync.Mutex{}
+	buildConfigFromFlags                  = clientcmd.BuildConfigFromFlags
+	newClientsetForConfig                 = kubernetes.NewForConfig
+	execInContainerWithOutput             = ExecCommandInContainerWithFullOutput
 )
 
 // ExecOptions passed to ExecWithOptions
@@ -100,13 +104,13 @@ func initClient() error {
 			kubeconfigPath = ""
 		}
 		log.Info("kubeconfig file is placed.", "config", kubeconfigPath)
-		restConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+		restConfig, err = buildConfigFromFlags("", kubeconfigPath)
 		if err != nil {
 			return err
 		}
 	}
 	if clientset == nil {
-		clientset, err = kubernetes.NewForConfig(restConfig)
+		clientset, err = newClientsetForConfig(restConfig)
 		if err != nil {
 			return err
 		}
@@ -174,28 +178,33 @@ func ExecCommandInContainerWithFullOutput(ctx context.Context, podName string, c
 
 // Exec commands in container without any timeout.
 func ExecCommandInContainer(podName string, containerName string, namespace string, cmd []string) (stdout string, stderr string, err error) {
-	return ExecCommandInContainerWithFullOutput(context.Background(), podName, containerName, namespace, cmd)
+	return ExecCommandInContainerWithContext(context.Background(), podName, containerName, namespace, cmd)
+}
+
+// ExecCommandInContainerWithContext executes a command in the container using the caller context.
+func ExecCommandInContainerWithContext(ctx context.Context, podName string, containerName string, namespace string, cmd []string) (stdout string, stderr string, err error) {
+	return ExecCommandInContainerWithFullOutput(ctx, podName, containerName, namespace, cmd)
 }
 
 // Exec commands in container with a given timeout.
 func ExecCommandInContainerWithTimeout(podName string, containerName string, namespace string, cmd []string, timeout time.Duration) (stdout string, stderr string, err error) {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	ch := make(chan string, 1)
-	defer cancel()
+	return ExecCommandInContainerWithTimeoutContext(context.TODO(), podName, containerName, namespace, cmd, timeout)
+}
 
-	go func() {
-		stdout, stderr, err = ExecCommandInContainerWithFullOutput(ctx, podName, containerName, namespace, cmd)
-		ch <- "done"
-	}()
-
-	select {
-	case <-ch:
-		// Succeeded in time
-	case <-ctx.Done():
-		err = fmt.Errorf("timed out for %v", timeout)
+// ExecCommandInContainerWithTimeoutContext executes a command in the container with a timeout derived from the caller context.
+func ExecCommandInContainerWithTimeoutContext(parentCtx context.Context, podName string, containerName string, namespace string, cmd []string, timeout time.Duration) (stdout string, stderr string, err error) {
+	if parentCtx == nil {
+		parentCtx = context.TODO()
 	}
 
-	return
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	defer cancel()
+
+	stdout, stderr, err = execInContainerWithOutput(ctx, podName, containerName, namespace, cmd)
+	if err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		return "", "", fmt.Errorf("exec command timed out or canceled after %v: %w", timeout, err)
+	}
+	return stdout, stderr, err
 }
 
 func doExecute(ctx context.Context, method string, url *url.URL, config *restclient.Config, stdin io.Reader, stdout, stderr io.Writer, tty bool) error {

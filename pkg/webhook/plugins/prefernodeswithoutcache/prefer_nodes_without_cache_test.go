@@ -17,27 +17,19 @@ limitations under the License.
 package prefernodeswithoutcache
 
 import (
-	"reflect"
-	"testing"
-
 	"github.com/fluid-cloudnative/fluid/pkg/common"
 	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func TestGetPreferredSchedulingTermForPodWithoutCacheWithGlobalMode(t *testing.T) {
-	runtimeInfo, err := base.BuildRuntimeInfo("test", "fluid", "alluxio")
-	if err != nil {
-		t.Errorf("fail to create the runtimeInfo with error %v", err)
-	}
-
-	// Test case 1: Global fuse with selector enable
-	runtimeInfo.SetFuseNodeSelector(map[string]string{"test1": "test1"})
-	term := getPreferredSchedulingTermForPodWithoutCache()
-
-	expectTerm := corev1.PreferredSchedulingTerm{
+// expectedNoDatasetTerm is the canonical PreferredSchedulingTerm asserted across
+// multiple specs for getPreferredSchedulingTermForPodWithoutCache.
+func expectedNoDatasetTerm() corev1.PreferredSchedulingTerm {
+	return corev1.PreferredSchedulingTerm{
 		Weight: 100,
 		Preference: corev1.NodeSelectorTerm{
 			MatchExpressions: []corev1.NodeSelectorRequirement{
@@ -48,89 +40,61 @@ func TestGetPreferredSchedulingTermForPodWithoutCacheWithGlobalMode(t *testing.T
 			},
 		},
 	}
-
-	if !reflect.DeepEqual(term, expectTerm) {
-		t.Errorf("getPreferredSchedulingTermForPodWithoutCache failure, want:%v, got:%v", expectTerm, term)
-	}
-
-	// Test case 2: Global fuse with selector disable
-	runtimeInfo.SetFuseNodeSelector(map[string]string{})
-	term = getPreferredSchedulingTermForPodWithoutCache()
-
-	if !reflect.DeepEqual(term, expectTerm) {
-		t.Errorf("getPreferredSchedulingTermForPodWithoutCache failure, want:%v, got:%v", expectTerm, term)
-	}
 }
 
-func TestGetPreferredSchedulingTermForPodWithoutCacheWithDefaultMode(t *testing.T) {
-	runtimeInfo, err := base.BuildRuntimeInfo("test", "fluid", "alluxio")
-	if err != nil {
-		t.Errorf("fail to create the runtimeInfo with error %v", err)
-	}
+var _ = Describe("PreferNodesWithoutCache Plugin", func() {
+	Describe("getPreferredSchedulingTermForPodWithoutCache", func() {
+		It("should return the same PreferredSchedulingTerm on repeated calls", func() {
+			term := getPreferredSchedulingTermForPodWithoutCache()
+			Expect(term).To(Equal(expectedNoDatasetTerm()))
 
-	runtimeInfo.SetFuseNodeSelector(map[string]string{})
-	term := getPreferredSchedulingTermForPodWithoutCache()
+			term = getPreferredSchedulingTermForPodWithoutCache()
+			Expect(term).To(Equal(expectedNoDatasetTerm()))
+		})
+	})
 
-	expectTerm := corev1.PreferredSchedulingTerm{
-		Weight: 100,
-		Preference: corev1.NodeSelectorTerm{
-			MatchExpressions: []corev1.NodeSelectorRequirement{
-				{
-					Key:      common.GetDatasetNumLabelName(),
-					Operator: corev1.NodeSelectorOpDoesNotExist,
+	Describe("Mutate", func() {
+		var (
+			cl  client.Client
+			pod *corev1.Pod
+		)
+
+		BeforeEach(func() {
+			cl = nil
+			pod = &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
 				},
-			},
-		},
-	}
+			}
+		})
 
-	if !reflect.DeepEqual(term, expectTerm) {
-		t.Errorf("getPreferredSchedulingTermForPodWithoutCache failure, want:%v, got:%v", expectTerm, term)
-	}
-}
+		It("should create plugin and mutate pod correctly", func() {
+			plugin, err := NewPlugin(cl, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plugin.GetName()).To(Equal(Name))
 
-func TestMutate(t *testing.T) {
-	var (
-		client client.Client
-		pod    *corev1.Pod
-	)
+			runtimeInfo, err := base.BuildRuntimeInfo("test", "fluid", "alluxio")
+			Expect(err).NotTo(HaveOccurred())
 
-	plugin, err := NewPlugin(client, "")
-	if err != nil {
-		t.Error("new plugin occurs error", err)
-	}
-	if plugin.GetName() != Name {
-		t.Errorf("GetName expect %v, got %v", Name, plugin.GetName())
-	}
+			shouldStop, err := plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{"test": runtimeInfo})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shouldStop).To(BeTrue())
+			Expect(pod.Spec.Affinity).To(BeNil())
 
-	runtimeInfo, err := base.BuildRuntimeInfo("test", "fluid", "alluxio")
-	if err != nil {
-		t.Errorf("fail to create the runtimeInfo with error %v", err)
-	}
+			shouldStop, err = plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shouldStop).To(BeTrue())
+			Expect(pod.Spec.Affinity).NotTo(BeNil())
+			Expect(pod.Spec.Affinity.NodeAffinity).NotTo(BeNil())
+			Expect(pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(Equal([]corev1.PreferredSchedulingTerm{expectedNoDatasetTerm()}))
 
-	pod = &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "test",
-		},
-	}
+			pod.Spec.Affinity = nil
 
-	shouldStop, err := plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{"test": runtimeInfo})
-	if err != nil {
-		t.Errorf("fail to mutate pod with error %v", err)
-	}
-
-	if !shouldStop {
-		t.Errorf("expect shouldStop as true, but got %v", shouldStop)
-	}
-
-	_, err = plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{})
-	if err != nil {
-		t.Errorf("fail to mutate pod with error %v", err)
-	}
-
-	_, err = plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{"test": nil})
-	if err != nil {
-		t.Errorf("fail to mutate pod with error %v", err)
-	}
-
-}
+			shouldStop, err = plugin.Mutate(pod, map[string]base.RuntimeInfoInterface{"test": nil})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shouldStop).To(BeTrue())
+			Expect(pod.Spec.Affinity).To(BeNil())
+		})
+	})
+})

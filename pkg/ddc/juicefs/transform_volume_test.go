@@ -17,343 +17,483 @@
 package juicefs
 
 import (
-	"reflect"
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/common"
 )
 
-func TestTransformWorkerVolumes(t *testing.T) {
-	type testCase struct {
-		name      string
-		runtime   *datav1alpha1.JuiceFSRuntime
-		expect    *JuiceFS
-		expectErr bool
-	}
+// Constants for test values
+const (
+	testJuiceVolumeName   = "test"
+	testJuiceSecretName   = "test"
+	testJuiceMountPath    = "/test"
+	testJuiceCachePath    = "/cache"
+	testJuiceWorkerCache1 = "/worker-cache1"
+	testJuiceWorkerCache2 = "/worker-cache2"
+	testJuiceFuseCache1   = "/fuse-cache1"
+	testCacheDirPrefix    = "cache-dir-"
+)
 
-	testCases := []testCase{
-		{
-			name: "all",
-			runtime: &datav1alpha1.JuiceFSRuntime{
-				Spec: datav1alpha1.JuiceFSRuntimeSpec{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
-								},
-							},
-						},
-					}, Worker: datav1alpha1.JuiceFSCompTemplateSpec{
-						VolumeMounts: []corev1.VolumeMount{
+var _ = Describe("JuiceFSEngine Transform Volume Tests", Label("pkg.ddc.juicefs.transform_volume_test.go"), func() {
+	var engine *JuiceFSEngine
+
+	BeforeEach(func() {
+		engine = &JuiceFSEngine{}
+	})
+
+	Describe("transformWorkerVolumes", func() {
+		Context("when both volumes and volume mounts are provided", func() {
+			It("should correctly transform volumes for worker", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Volumes: []corev1.Volume{
 							{
-								Name:      "test",
-								MountPath: "/test",
-							},
-						},
-					},
-				},
-			},
-			expect: &JuiceFS{
-				Worker: Worker{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
+								Name: testJuiceVolumeName,
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: testJuiceSecretName,
+									},
 								},
 							},
 						},
-					}, VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "test",
-							MountPath: "/test",
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
 						},
 					},
-				},
-			},
-			expectErr: false,
-		}, {
-			name: "onlyVolumeMounts",
-			runtime: &datav1alpha1.JuiceFSRuntime{
-				Spec: datav1alpha1.JuiceFSRuntimeSpec{
-					Worker: datav1alpha1.JuiceFSCompTemplateSpec{
-						VolumeMounts: []corev1.VolumeMount{
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.Worker.Volumes).To(HaveLen(1))
+				Expect(got.Worker.Volumes[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.Volumes[0].Secret.SecretName).To(Equal(testJuiceSecretName))
+				Expect(got.Worker.VolumeMounts).To(HaveLen(1))
+				Expect(got.Worker.VolumeMounts[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.VolumeMounts[0].MountPath).To(Equal(testJuiceMountPath))
+			})
+		})
+
+		Context("when only volume mounts are provided without corresponding volumes", func() {
+			It("should return an error", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
+						},
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("worker volumeMount"))
+				Expect(err.Error()).To(ContainSubstring(testJuiceVolumeName))
+			})
+		})
+
+		Context("when worker volume mount references a volume claim template", func() {
+			It("should add the mount and claim template without adding a normal volume", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 							{
-								Name:      "test",
-								MountPath: "/test",
-							},
-						},
-					},
-				},
-			},
-			expect: &JuiceFS{
-				Worker: Worker{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
+								ObjectMeta: metav1.ObjectMeta{
+									Name: testJuiceVolumeName,
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+									Resources: corev1.VolumeResourceRequirements{
+										Requests: corev1.ResourceList{
+											corev1.ResourceStorage: resource.MustParse("10Gi"),
+										},
+									},
 								},
 							},
 						},
-					}, VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "test",
-							MountPath: "/test",
-						},
-					},
-				},
-			},
-			expectErr: true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		engine := &JuiceFSEngine{}
-		got := &JuiceFS{}
-		err := engine.transformWorkerVolumes(testCase.runtime, got)
-		if err != nil && !testCase.expectErr {
-			t.Errorf("Got unexpected error %v", err)
-		}
-
-		if testCase.expectErr {
-			continue
-		}
-
-		if !reflect.DeepEqual(got, testCase.expect) {
-			t.Errorf("want %v, got %v for testcase %s", testCase.expect, got, testCase.name)
-		}
-
-	}
-
-}
-
-func TestTransformFuseVolumes(t *testing.T) {
-	type testCase struct {
-		name      string
-		runtime   *datav1alpha1.JuiceFSRuntime
-		expect    *JuiceFS
-		expectErr bool
-	}
-
-	testCases := []testCase{
-		{
-			name: "all",
-			runtime: &datav1alpha1.JuiceFSRuntime{
-				Spec: datav1alpha1.JuiceFSRuntimeSpec{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
 								},
 							},
 						},
-					}, Fuse: datav1alpha1.JuiceFSFuseSpec{
-						VolumeMounts: []corev1.VolumeMount{
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.Worker.VolumeMounts).To(HaveLen(1))
+				Expect(got.Worker.VolumeMounts[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.VolumeClaimTemplates).To(HaveLen(1))
+				Expect(got.Worker.VolumeClaimTemplates[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.VolumeClaimTemplates[0].Spec.AccessModes).To(ConsistOf(corev1.ReadWriteOnce))
+				Expect(got.Worker.Volumes).To(BeEmpty())
+			})
+		})
+
+		Context("when runtime declares a volume claim template without worker volume mounts", func() {
+			It("should return an error before rendering an invalid worker StatefulSet", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 							{
-								Name:      "test",
-								MountPath: "/test",
-							},
-						},
-					},
-				},
-			},
-			expect: &JuiceFS{
-				Fuse: Fuse{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
+								ObjectMeta: metav1.ObjectMeta{
+									Name: testJuiceVolumeName,
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 								},
 							},
 						},
-					}, VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "test",
-							MountPath: "/test",
-						},
 					},
-				},
-			},
-			expectErr: false,
-		}, {
-			name: "onlyVolumeMounts",
-			runtime: &datav1alpha1.JuiceFSRuntime{
-				Spec: datav1alpha1.JuiceFSRuntimeSpec{
-					Fuse: datav1alpha1.JuiceFSFuseSpec{
-						VolumeMounts: []corev1.VolumeMount{
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("volumeClaimTemplate"))
+				Expect(err.Error()).To(ContainSubstring(testJuiceVolumeName))
+				Expect(err.Error()).To(ContainSubstring("worker volumeMounts"))
+				Expect(got.Worker.VolumeMounts).To(BeEmpty())
+				Expect(got.Worker.Volumes).To(BeEmpty())
+				Expect(got.Worker.VolumeClaimTemplates).To(BeEmpty())
+			})
+		})
+
+		Context("when runtime declares an unmounted volume claim template alongside a mounted template", func() {
+			It("should return an error that names the unmounted claim template", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 							{
-								Name:      "test",
-								MountPath: "/test",
+								ObjectMeta: metav1.ObjectMeta{
+									Name: testJuiceVolumeName,
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+								},
 							},
-						},
-					},
-				},
-			},
-			expect: &JuiceFS{
-				Fuse: Fuse{
-					Volumes: []corev1.Volume{
-						{
-							Name: "test",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "test",
+							{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: "unused-cache",
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 								},
 							},
 						},
-					}, VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "test",
-							MountPath: "/test",
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
 						},
 					},
-				},
-			},
-			expectErr: true,
-		},
-	}
+				}
 
-	for _, testCase := range testCases {
-		engine := &JuiceFSEngine{}
-		got := &JuiceFS{}
-		err := engine.transformFuseVolumes(testCase.runtime, got)
-		if err != nil && !testCase.expectErr {
-			t.Errorf("Got unexpected error %v for testcase %s", err, testCase.name)
-		}
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
 
-		if testCase.expectErr {
-			continue
-		}
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("unused-cache"))
+				Expect(err.Error()).To(ContainSubstring("worker volumeMounts"))
+			})
+		})
 
-		if !reflect.DeepEqual(got, testCase.expect) {
-			t.Errorf("want %v, got %v for testcase %s", testCase.expect, got, testCase.name)
-		}
+		Context("when multiple worker volume mounts reference the same volume claim template", func() {
+			It("should render every mount and only one claim template", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+							{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: testJuiceVolumeName,
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+								},
+							},
+						},
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: "/test-copy",
+									SubPath:   "copy",
+								},
+							},
+						},
+					},
+				}
 
-	}
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
 
-}
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.Worker.VolumeMounts).To(HaveLen(2))
+				Expect(got.Worker.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: testJuiceVolumeName, MountPath: testJuiceMountPath}))
+				Expect(got.Worker.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: testJuiceVolumeName, MountPath: "/test-copy", SubPath: "copy"}))
+				Expect(got.Worker.VolumeClaimTemplates).To(HaveLen(1))
+				Expect(got.Worker.VolumeClaimTemplates[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.Volumes).To(BeEmpty())
+			})
+		})
 
-func TestJuiceFSEngine_transformWorkerCacheVolumes(t *testing.T) {
-	dir := corev1.HostPathDirectoryOrCreate
-	type args struct {
-		runtime *datav1alpha1.JuiceFSRuntime
-		value   *JuiceFS
-		options map[string]string
-	}
-	tests := []struct {
-		name             string
-		args             args
-		wantErr          bool
-		wantVolumes      []corev1.Volume
-		wantVolumeMounts []corev1.VolumeMount
-	}{
-		{
-			name: "test-normal",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{},
-				value: &JuiceFS{
+		Context("when multiple worker volume mounts reference the same normal volume", func() {
+			It("should render every mount and only one normal volume", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Volumes: []corev1.Volume{
+							{
+								Name: testJuiceVolumeName,
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: testJuiceSecretName,
+									},
+								},
+							},
+						},
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: "/test-copy",
+									SubPath:   "copy",
+								},
+							},
+						},
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.Worker.VolumeMounts).To(HaveLen(2))
+				Expect(got.Worker.Volumes).To(HaveLen(1))
+				Expect(got.Worker.Volumes[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Worker.VolumeClaimTemplates).To(BeEmpty())
+			})
+		})
+
+		Context("when a volume and volume claim template share the same name", func() {
+			It("should return an error to avoid ambiguous worker volume mounts", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Volumes: []corev1.Volume{
+							{
+								Name: testJuiceVolumeName,
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: testJuiceSecretName,
+									},
+								},
+							},
+						},
+						VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+							{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: testJuiceVolumeName,
+								},
+								Spec: corev1.PersistentVolumeClaimSpec{
+									AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+								},
+							},
+						},
+						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
+						},
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformWorkerVolumes(runtime, got)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("ambiguous"))
+				Expect(err.Error()).To(ContainSubstring("volumes"))
+				Expect(err.Error()).To(ContainSubstring("volumeClaimTemplates"))
+				Expect(err.Error()).To(ContainSubstring(testJuiceVolumeName))
+				Expect(got.Worker.VolumeMounts).To(BeEmpty())
+				Expect(got.Worker.VolumeClaimTemplates).To(BeEmpty())
+				Expect(got.Worker.Volumes).To(BeEmpty())
+			})
+		})
+	})
+
+	Describe("transformFuseVolumes", func() {
+		Context("when both volumes and volume mounts are provided", func() {
+			It("should correctly transform volumes for fuse", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Volumes: []corev1.Volume{
+							{
+								Name: testJuiceVolumeName,
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: testJuiceSecretName,
+									},
+								},
+							},
+						},
+						Fuse: datav1alpha1.JuiceFSFuseSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
+						},
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformFuseVolumes(runtime, got)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.Fuse.Volumes).To(HaveLen(1))
+				Expect(got.Fuse.Volumes[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Fuse.Volumes[0].Secret.SecretName).To(Equal(testJuiceSecretName))
+				Expect(got.Fuse.VolumeMounts).To(HaveLen(1))
+				Expect(got.Fuse.VolumeMounts[0].Name).To(Equal(testJuiceVolumeName))
+				Expect(got.Fuse.VolumeMounts[0].MountPath).To(Equal(testJuiceMountPath))
+			})
+		})
+
+		Context("when only volume mounts are provided without corresponding volumes", func() {
+			It("should return an error", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
+					Spec: datav1alpha1.JuiceFSRuntimeSpec{
+						Fuse: datav1alpha1.JuiceFSFuseSpec{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      testJuiceVolumeName,
+									MountPath: testJuiceMountPath,
+								},
+							},
+						},
+					},
+				}
+
+				got := &JuiceFS{}
+				err := engine.transformFuseVolumes(runtime, got)
+
+				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("transformWorkerCacheVolumes", func() {
+		var hostPathDir corev1.HostPathType
+
+		BeforeEach(func() {
+			hostPathDir = corev1.HostPathDirectoryOrCreate
+		})
+
+		Context("when normal cache directory is specified", func() {
+			It("should create hostPath volume and mount", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
-						"1": {Path: "/cache", Type: string(common.VolumeTypeHostPath)},
+						"1": {Path: testJuiceCachePath, Type: string(common.VolumeTypeHostPath)},
 					},
-				},
-				options: map[string]string{"cache-dir": "/cache"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{{
-				Name: "cache-dir-0",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/cache",
-						Type: &dir,
-					},
-				},
-			}},
-			wantVolumeMounts: []corev1.VolumeMount{{
-				Name:      "cache-dir-0",
-				MountPath: "/cache",
-			}},
-		},
-		{
-			name: "test-option-overwrite",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{
+				}
+				options := map[string]string{"cache-dir": testJuiceCachePath}
+
+				err := engine.transformWorkerCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Worker.Volumes).To(HaveLen(1))
+				Expect(value.Worker.Volumes[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Worker.Volumes[0].HostPath.Path).To(Equal(testJuiceCachePath))
+				Expect(*value.Worker.Volumes[0].HostPath.Type).To(Equal(hostPathDir))
+				Expect(value.Worker.VolumeMounts).To(HaveLen(1))
+				Expect(value.Worker.VolumeMounts[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Worker.VolumeMounts[0].MountPath).To(Equal(testJuiceCachePath))
+			})
+		})
+
+		Context("when multiple cache directories are specified via options", func() {
+			It("should create multiple hostPath volumes and mounts", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
 					Spec: datav1alpha1.JuiceFSRuntimeSpec{
 						Worker: datav1alpha1.JuiceFSCompTemplateSpec{},
 					},
-				},
-				value: &JuiceFS{
+				}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
-						"1": {Path: "/cache", Type: string(common.VolumeTypeHostPath)},
+						"1": {Path: testJuiceCachePath, Type: string(common.VolumeTypeHostPath)},
 					},
-				},
-				options: map[string]string{"cache-dir": "/cache:/worker-cache1:/worker-cache2"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{
-				{
-					Name: "cache-dir-0",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/cache",
-							Type: &dir,
-						},
-					},
-				},
-				{
-					Name: "cache-dir-1",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/worker-cache1",
-							Type: &dir,
-						},
-					},
-				},
-				{
-					Name: "cache-dir-2",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/worker-cache2",
-							Type: &dir,
-						},
-					},
-				},
-			},
-			wantVolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "cache-dir-0",
-					MountPath: "/cache",
-				},
-				{
-					Name:      "cache-dir-1",
-					MountPath: "/worker-cache1",
-				},
-				{
-					Name:      "cache-dir-2",
-					MountPath: "/worker-cache2",
-				},
-			},
-		},
-		{
-			name: "test-volume-overwrite",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{
+				}
+				options := map[string]string{"cache-dir": testJuiceCachePath + ":" + testJuiceWorkerCache1 + ":" + testJuiceWorkerCache2}
+
+				err := engine.transformWorkerCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Worker.Volumes).To(HaveLen(3))
+				Expect(value.Worker.VolumeMounts).To(HaveLen(3))
+				// Verify volume names and paths
+				volumeNames := make([]string, 0, len(value.Worker.Volumes))
+				for _, v := range value.Worker.Volumes {
+					volumeNames = append(volumeNames, v.Name)
+					Expect(v.HostPath).NotTo(BeNil(), "expected HostPath volume type")
+				}
+				mountNames := make([]string, 0, len(value.Worker.VolumeMounts))
+				for _, m := range value.Worker.VolumeMounts {
+					mountNames = append(mountNames, m.Name)
+				}
+				Expect(volumeNames).To(ConsistOf(testCacheDirPrefix+"0", testCacheDirPrefix+"1", testCacheDirPrefix+"2"))
+				Expect(mountNames).To(ConsistOf(testCacheDirPrefix+"0", testCacheDirPrefix+"1", testCacheDirPrefix+"2"))
+			})
+		})
+
+		Context("when runtime has existing volumes that overlap with cache dirs", func() {
+			It("should preserve existing volumes and add non-overlapping cache volumes", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
 					Spec: datav1alpha1.JuiceFSRuntimeSpec{
 						Worker: datav1alpha1.JuiceFSCompTemplateSpec{
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "cache",
-									MountPath: "/worker-cache2",
+									MountPath: testJuiceWorkerCache2,
 								},
 							},
 						},
@@ -366,16 +506,16 @@ func TestJuiceFSEngine_transformWorkerCacheVolumes(t *testing.T) {
 							},
 						},
 					},
-				},
-				value: &JuiceFS{
+				}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
-						"1": {Path: "/cache", Type: string(common.VolumeTypeHostPath)},
+						"1": {Path: testJuiceCachePath, Type: string(common.VolumeTypeHostPath)},
 					},
 					Worker: Worker{
 						VolumeMounts: []corev1.VolumeMount{
 							{
 								Name:      "cache",
-								MountPath: "/worker-cache2",
+								MountPath: testJuiceWorkerCache2,
 							},
 						},
 						Volumes: []corev1.Volume{
@@ -387,50 +527,35 @@ func TestJuiceFSEngine_transformWorkerCacheVolumes(t *testing.T) {
 							},
 						},
 					},
-				},
-				options: map[string]string{"cache-dir": "/worker-cache1:/worker-cache2"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{
-				{
-					Name: "cache",
-					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{},
-					},
-				},
-				{
-					Name: "cache-dir-0",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/worker-cache1",
-							Type: &dir,
-						},
-					},
-				},
-			},
-			wantVolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "cache",
-					MountPath: "/worker-cache2",
-				},
-				{
-					Name:      "cache-dir-0",
-					MountPath: "/worker-cache1",
-				},
-			},
-		},
-		{
-			name: "test-emptyDir",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{
+				}
+				options := map[string]string{"cache-dir": testJuiceWorkerCache1 + ":" + testJuiceWorkerCache2}
+
+				err := engine.transformWorkerCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Worker.Volumes).To(HaveLen(2))
+				Expect(value.Worker.VolumeMounts).To(HaveLen(2))
+				// Verify that existing "cache" volume is preserved and new cache-dir volume is added
+				volumeNames := make([]string, 0, len(value.Worker.Volumes))
+				for _, v := range value.Worker.Volumes {
+					volumeNames = append(volumeNames, v.Name)
+				}
+				Expect(volumeNames).To(ContainElement("cache"), "existing cache volume should be preserved")
+				Expect(volumeNames).To(ContainElement(testCacheDirPrefix+"0"), "new cache-dir volume should be added")
+			})
+		})
+
+		Context("when emptyDir cache type is specified", func() {
+			It("should handle emptyDir cache configuration", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
 					Spec: datav1alpha1.JuiceFSRuntimeSpec{
 						Worker: datav1alpha1.JuiceFSCompTemplateSpec{},
 					},
-				},
-				value: &JuiceFS{
+				}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
 						"1": {
-							Path: "/cache",
+							Path: testJuiceCachePath,
 							Type: string(common.VolumeTypeEmptyDir),
 							VolumeSource: &datav1alpha1.VolumeSource{VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{
@@ -440,117 +565,61 @@ func TestJuiceFSEngine_transformWorkerCacheVolumes(t *testing.T) {
 						},
 					},
 					Worker: Worker{},
-				},
-				options: map[string]string{"cache-dir": "/worker-cache1"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{
-				{
-					Name: "cache-dir-0",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/worker-cache1",
-							Type: &dir,
-						},
-					},
-				},
-			},
-			wantVolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "cache-dir-0",
-					MountPath: "/worker-cache1",
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			j := &JuiceFSEngine{}
-			if err := j.transformWorkerCacheVolumes(tt.args.runtime, tt.args.value, tt.args.options); (err != nil) != tt.wantErr {
-				t.Errorf("transformWorkerCacheVolumes() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			// compare volumes
-			if len(tt.args.value.Worker.Volumes) != len(tt.wantVolumes) {
-				t.Errorf("want volumes %v, got %v for testcase %s", tt.wantVolumes, tt.args.value.Worker.Volumes, tt.name)
-			}
-			wantVolumeMap := make(map[string]corev1.Volume)
-			for _, v := range tt.wantVolumes {
-				wantVolumeMap[v.Name] = v
-			}
-			for _, v := range tt.args.value.Worker.Volumes {
-				if wv := wantVolumeMap[v.Name]; !reflect.DeepEqual(wv, v) {
-					t.Errorf("want volumes %v, got %v for testcase %s", tt.wantVolumes, tt.args.value.Worker.Volumes, tt.name)
 				}
-			}
+				options := map[string]string{"cache-dir": testJuiceWorkerCache1}
 
-			// compare volumeMounts
-			if len(tt.args.value.Worker.VolumeMounts) != len(tt.wantVolumeMounts) {
-				t.Errorf("want volumeMounts %v, got %v for testcase %s", tt.wantVolumeMounts, tt.args.value.Worker.VolumeMounts, tt.name)
-			}
-			wantVolumeMountsMap := make(map[string]corev1.VolumeMount)
-			for _, v := range tt.wantVolumeMounts {
-				wantVolumeMountsMap[v.Name] = v
-			}
-			for _, v := range tt.args.value.Worker.VolumeMounts {
-				if wv := wantVolumeMountsMap[v.Name]; !reflect.DeepEqual(wv, v) {
-					t.Errorf("want volumeMounts %v, got %v for testcase %s", tt.wantVolumeMounts, tt.args.value.Worker.VolumeMounts, tt.name)
-				}
-			}
+				err := engine.transformWorkerCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Worker.Volumes).To(HaveLen(1))
+				Expect(value.Worker.VolumeMounts).To(HaveLen(1))
+				// Verify volume name and mount path are correct
+				Expect(value.Worker.Volumes[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Worker.VolumeMounts[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Worker.VolumeMounts[0].MountPath).To(Equal(testJuiceWorkerCache1))
+			})
 		})
-	}
-}
+	})
 
-func TestJuiceFSEngine_transformFuseCacheVolumes(t *testing.T) {
-	dir := corev1.HostPathDirectoryOrCreate
-	type args struct {
-		runtime *datav1alpha1.JuiceFSRuntime
-		value   *JuiceFS
-		options map[string]string
-	}
-	tests := []struct {
-		name             string
-		args             args
-		wantErr          bool
-		wantVolumes      []corev1.Volume
-		wantVolumeMounts []corev1.VolumeMount
-	}{
-		{
-			name: "test-normal",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{},
-				value: &JuiceFS{
+	Describe("transformFuseCacheVolumes", func() {
+		var hostPathDir corev1.HostPathType
+
+		BeforeEach(func() {
+			hostPathDir = corev1.HostPathDirectoryOrCreate
+		})
+
+		Context("when normal cache directory is specified", func() {
+			It("should create hostPath volume and mount for fuse", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
-						"1": {Path: "/cache", Type: string(common.VolumeTypeHostPath)},
+						"1": {Path: testJuiceCachePath, Type: string(common.VolumeTypeHostPath)},
 					},
-				},
-				options: map[string]string{"cache-dir": "/cache"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{{
-				Name: "cache-dir-0",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/cache",
-						Type: &dir,
-					},
-				},
-			}},
-			wantVolumeMounts: []corev1.VolumeMount{{
-				Name:      "cache-dir-0",
-				MountPath: "/cache",
-			}},
-		},
-		{
-			name: "test-volume-overwrite",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{
+				}
+				options := map[string]string{"cache-dir": testJuiceCachePath}
+
+				err := engine.transformFuseCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Fuse.Volumes).To(HaveLen(1))
+				Expect(value.Fuse.Volumes[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Fuse.Volumes[0].HostPath.Path).To(Equal(testJuiceCachePath))
+				Expect(*value.Fuse.Volumes[0].HostPath.Type).To(Equal(hostPathDir))
+				Expect(value.Fuse.VolumeMounts).To(HaveLen(1))
+				Expect(value.Fuse.VolumeMounts[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Fuse.VolumeMounts[0].MountPath).To(Equal(testJuiceCachePath))
+			})
+		})
+
+		Context("when runtime has existing fuse volumes that overlap with cache dirs", func() {
+			It("should not add cache volumes when existing volume covers cache path", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
 					Spec: datav1alpha1.JuiceFSRuntimeSpec{
 						Fuse: datav1alpha1.JuiceFSFuseSpec{
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "cache",
-									MountPath: "/cache",
+									MountPath: testJuiceCachePath,
 								},
 							},
 						},
@@ -563,29 +632,32 @@ func TestJuiceFSEngine_transformFuseCacheVolumes(t *testing.T) {
 							},
 						},
 					},
-				},
-				value: &JuiceFS{
+				}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
-						"1": {Path: "/cache", Type: string(common.VolumeTypeHostPath)},
+						"1": {Path: testJuiceCachePath, Type: string(common.VolumeTypeHostPath)},
 					},
-				},
-			},
-			wantErr:          false,
-			wantVolumes:      nil,
-			wantVolumeMounts: nil,
-		},
-		{
-			name: "test-emptyDir",
-			args: args{
-				runtime: &datav1alpha1.JuiceFSRuntime{
+				}
+
+				err := engine.transformFuseCacheVolumes(runtime, value, nil)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Fuse.Volumes).To(BeEmpty())
+				Expect(value.Fuse.VolumeMounts).To(BeEmpty())
+			})
+		})
+
+		Context("when emptyDir cache type is specified for fuse", func() {
+			It("should handle emptyDir cache configuration for fuse", func() {
+				runtime := &datav1alpha1.JuiceFSRuntime{
 					Spec: datav1alpha1.JuiceFSRuntimeSpec{
 						Fuse: datav1alpha1.JuiceFSFuseSpec{},
 					},
-				},
-				value: &JuiceFS{
+				}
+				value := &JuiceFS{
 					CacheDirs: map[string]cache{
 						"1": {
-							Path: "/cache",
+							Path: testJuiceCachePath,
 							Type: string(common.VolumeTypeEmptyDir),
 							VolumeSource: &datav1alpha1.VolumeSource{VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{
@@ -594,63 +666,19 @@ func TestJuiceFSEngine_transformFuseCacheVolumes(t *testing.T) {
 							}},
 						},
 					},
-				},
-				options: map[string]string{"cache-dir": "/fuse-cache1"},
-			},
-			wantErr: false,
-			wantVolumes: []corev1.Volume{
-				{
-					Name: "cache-dir-0",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/fuse-cache1",
-							Type: &dir,
-						},
-					},
-				},
-			},
-			wantVolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "cache-dir-0",
-					MountPath: "/fuse-cache1",
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			j := &JuiceFSEngine{}
-			if err := j.transformFuseCacheVolumes(tt.args.runtime, tt.args.value, tt.args.options); (err != nil) != tt.wantErr {
-				t.Errorf("transformFuseCacheVolumes() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			// compare volumes
-			if len(tt.args.value.Fuse.Volumes) != len(tt.wantVolumes) {
-				t.Errorf("want volumes %v, got %v for testcase %s", tt.wantVolumes, tt.args.value.Fuse.Volumes, tt.name)
-			}
-			wantVolumeMap := make(map[string]corev1.Volume)
-			for _, v := range tt.wantVolumes {
-				wantVolumeMap[v.Name] = v
-			}
-			for _, v := range tt.args.value.Fuse.Volumes {
-				if wv := wantVolumeMap[v.Name]; !reflect.DeepEqual(wv, v) {
-					t.Errorf("want volumes %v, got %v for testcase %s", tt.wantVolumes, tt.args.value.Fuse.Volumes, tt.name)
 				}
-			}
+				options := map[string]string{"cache-dir": testJuiceFuseCache1}
 
-			// compare volumeMounts
-			if len(tt.args.value.Fuse.VolumeMounts) != len(tt.wantVolumeMounts) {
-				t.Errorf("want volumeMounts %v, got %v for testcase %s", tt.wantVolumeMounts, tt.args.value.Fuse.VolumeMounts, tt.name)
-			}
-			wantVolumeMountsMap := make(map[string]corev1.VolumeMount)
-			for _, v := range tt.wantVolumeMounts {
-				wantVolumeMountsMap[v.Name] = v
-			}
-			for _, v := range tt.args.value.Fuse.VolumeMounts {
-				if wv := wantVolumeMountsMap[v.Name]; !reflect.DeepEqual(wv, v) {
-					t.Errorf("want volumeMounts %v, got %v for testcase %s", tt.wantVolumeMounts, tt.args.value.Fuse.VolumeMounts, tt.name)
-				}
-			}
+				err := engine.transformFuseCacheVolumes(runtime, value, options)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value.Fuse.Volumes).To(HaveLen(1))
+				Expect(value.Fuse.VolumeMounts).To(HaveLen(1))
+				// Verify volume name and mount path are correct
+				Expect(value.Fuse.Volumes[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Fuse.VolumeMounts[0].Name).To(Equal(testCacheDirPrefix + "0"))
+				Expect(value.Fuse.VolumeMounts[0].MountPath).To(Equal(testJuiceFuseCache1))
+			})
 		})
-	}
-}
+	})
+})

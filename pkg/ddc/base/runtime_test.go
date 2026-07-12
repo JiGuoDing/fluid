@@ -17,9 +17,11 @@ limitations under the License.
 package base
 
 import (
-	"reflect"
-	"testing"
+	"os"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/common"
@@ -27,6 +29,7 @@ import (
 
 	fakeutils "github.com/fluid-cloudnative/fluid/pkg/utils/fake"
 	v1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func Test_convertToTieredstoreInfo(t *testing.T) {
+var _ = Describe("convertToTieredstoreInfo", func() {
 	type args struct {
 		tieredstore v1alpha1.TieredStore
 	}
@@ -122,20 +125,19 @@ func Test_convertToTieredstoreInfo(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		It(tt.name, func() {
 			got, err := convertToTieredstoreInfo(tt.args.tieredstore)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("convertToTieredstoreInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("convertToTieredstoreInfo() got = %v, want %v", got, tt.want)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got).To(Equal(tt.want))
 			}
 		})
 	}
-}
+})
 
-func TestBuildRuntimeInfo(t *testing.T) {
+var _ = Describe("BuildRuntimeInfo", func() {
 	const runtimetype = "alluxio"
 	type args struct {
 		name        string
@@ -191,36 +193,31 @@ func TestBuildRuntimeInfo(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		It(tt.name, func() {
 			gotRuntime, err := BuildRuntimeInfo(tt.args.name, tt.args.namespace, tt.args.runtimeType, WithTieredStore(tt.args.tieredstore))
-			if (err != nil) != tt.wantErr {
-				t.Errorf("BuildRuntimeInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
 
-			tieredstoreInfo, err := convertToTieredstoreInfo(tieredstore)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("convertToTieredstoreInfo() error = %v, wantErr %v", err, tt.wantErr)
-			}
+				tieredstoreInfo, err := convertToTieredstoreInfo(tieredstore)
+				Expect(err).NotTo(HaveOccurred())
 
-			if gotRuntime.GetName() != tt.wantRuntime.GetName() ||
-				gotRuntime.GetNamespace() != tt.wantRuntime.GetNamespace() ||
-				gotRuntime.GetRuntimeType() != tt.wantRuntime.GetRuntimeType() ||
-				!reflect.DeepEqual(gotRuntime.GetTieredStoreInfo(), tieredstoreInfo) {
-				t.Errorf("BuildRuntimeInfo() gotRuntime = %v, want %v", gotRuntime, tt.wantRuntime)
+				Expect(gotRuntime.GetName()).To(Equal(tt.wantRuntime.GetName()))
+				Expect(gotRuntime.GetNamespace()).To(Equal(tt.wantRuntime.GetNamespace()))
+				Expect(gotRuntime.GetRuntimeType()).To(Equal(tt.wantRuntime.GetRuntimeType()))
+				Expect(gotRuntime.GetTieredStoreInfo()).To(Equal(tieredstoreInfo))
 			}
-
 		})
 	}
-}
+})
 
-func TestCleanPolicy(t *testing.T) {
+var _ = Describe("CleanPolicy", func() {
 	s := runtime.NewScheme()
 
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.AlluxioRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JindoRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JuiceFSRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.GooseFSRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.Dataset{})
 
 	// Test Alluxio Runtime
@@ -487,94 +484,6 @@ func TestCleanPolicy(t *testing.T) {
 	juiceRuntimeObjs = append(juiceRuntimeObjs, &juiceRuntimeOnDemandCleanPolicy, &dataJuiceOnDemandCleanPolicy)
 	juiceRuntimeObjs = append(juiceRuntimeObjs, &juiceRuntimeOnRuntimeDeletedCleanPolicy, &dataJuiceOnRuntimeDeletedCleanPolicy)
 
-	// Test GooseFs Runtime
-	goosefsRuntimeDefaultCleanPolicy := v1alpha1.GooseFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "default_policy_goosefs",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.GooseFSRuntimeSpec{
-			Fuse: v1alpha1.GooseFSFuseSpec{},
-		},
-	}
-
-	dataGooseFSDefaultCleanPolicy := v1alpha1.Dataset{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "default_policy_goosefs",
-			Namespace: "default",
-		},
-		Status: v1alpha1.DatasetStatus{
-			Runtimes: []v1alpha1.Runtime{
-				{
-					Name:      "default_policy_goosefs",
-					Namespace: "default",
-					Type:      common.GooseFSRuntime,
-				},
-			},
-		},
-	}
-
-	goosefsRuntimeOnDemandCleanPolicy := v1alpha1.GooseFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "on_demand_policy_goosefs",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.GooseFSRuntimeSpec{
-			Fuse: v1alpha1.GooseFSFuseSpec{
-				CleanPolicy: v1alpha1.OnDemandCleanPolicy,
-			},
-		},
-	}
-
-	dataGooseFSOnDemandCleanPolicy := v1alpha1.Dataset{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "on_demand_policy_goosefs",
-			Namespace: "default",
-		},
-		Status: v1alpha1.DatasetStatus{
-			Runtimes: []v1alpha1.Runtime{
-				{
-					Name:      "on_demand_policy_goosefs",
-					Namespace: "default",
-					Type:      common.GooseFSRuntime,
-				},
-			},
-		},
-	}
-
-	goosefsRuntimeOnRuntimeDeletedCleanPolicy := v1alpha1.GooseFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "on_runtime_deleted_policy_goosefs",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.GooseFSRuntimeSpec{
-			Fuse: v1alpha1.GooseFSFuseSpec{
-				CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
-			},
-		},
-	}
-
-	dataGooseFSOnRuntimeDeletedCleanPolicy := v1alpha1.Dataset{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "on_runtime_deleted_policy_goosefs",
-			Namespace: "default",
-		},
-		Status: v1alpha1.DatasetStatus{
-			Runtimes: []v1alpha1.Runtime{
-				{
-					Name:      "on_runtime_deleted_policy_goosefs",
-					Namespace: "default",
-					Type:      common.GooseFSRuntime,
-				},
-			},
-		},
-	}
-
-	goosefsRuntimeObjs := []runtime.Object{}
-	goosefsRuntimeObjs = append(goosefsRuntimeObjs, &goosefsRuntimeDefaultCleanPolicy, &dataGooseFSDefaultCleanPolicy)
-	goosefsRuntimeObjs = append(goosefsRuntimeObjs, &goosefsRuntimeOnDemandCleanPolicy, &dataGooseFSOnDemandCleanPolicy)
-	goosefsRuntimeObjs = append(goosefsRuntimeObjs, &goosefsRuntimeOnRuntimeDeletedCleanPolicy, &dataGooseFSOnRuntimeDeletedCleanPolicy)
-
 	type args struct {
 		client    client.Client
 		name      string
@@ -739,75 +648,23 @@ func TestCleanPolicy(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "default_test_goosefs",
-			args: args{
-				client:    fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:      "default_policy_goosefs",
-				namespace: "default",
-			},
-			want: &RuntimeInfo{
-				name:        "default_policy_goosefs",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-				fuse: Fuse{
-					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "on_demand_test_goosefs",
-			args: args{
-				client:    fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:      "on_demand_policy_goosefs",
-				namespace: "default",
-			},
-			want: &RuntimeInfo{
-				name:        "on_demand_policy_goosefs",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-				fuse: Fuse{
-					CleanPolicy: v1alpha1.OnDemandCleanPolicy,
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "on_runtime_deleted_test-goosefs",
-			args: args{
-				client:    fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:      "on_runtime_deleted_policy_goosefs",
-				namespace: "default",
-			},
-			want: &RuntimeInfo{
-				name:        "on_runtime_deleted_policy_goosefs",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-				fuse: Fuse{
-					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
-				},
-			},
-			wantErr: false,
-		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		It(tt.name, func() {
 			// SetupFuseCleanPolicy will be called in GetRuntimeInfo()
 			got, err := GetRuntimeInfo(tt.args.client, tt.args.name, tt.args.namespace)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetRuntimeInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && !reflect.DeepEqual(got.GetFuseCleanPolicy(), tt.want.GetFuseCleanPolicy()) {
-				t.Errorf("GetRuntimeInfo() = %#v, want %#v", got, tt.want)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got.GetFuseCleanPolicy()).To(Equal(tt.want.GetFuseCleanPolicy()))
 			}
 		})
 	}
-}
+})
 
-func TestGetRuntimeInfo(t *testing.T) {
+var _ = Describe("GetRuntimeInfo", func() {
 	s := runtime.NewScheme()
 
 	alluxioRuntime := v1alpha1.AlluxioRuntime{
@@ -828,29 +685,6 @@ func TestGetRuntimeInfo(t *testing.T) {
 					Name:      "alluxio",
 					Namespace: "default",
 					Type:      common.AlluxioRuntime,
-				},
-			},
-		},
-	}
-
-	goosefsRuntime := v1alpha1.GooseFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "goosefs",
-			Namespace: "default",
-		},
-	}
-
-	dataGooseFS := v1alpha1.Dataset{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "goosefs",
-			Namespace: "default",
-		},
-		Status: v1alpha1.DatasetStatus{
-			Runtimes: []v1alpha1.Runtime{
-				{
-					Name:      "goosefs",
-					Namespace: "default",
-					Type:      common.GooseFSRuntime,
 				},
 			},
 		},
@@ -953,20 +787,17 @@ func TestGetRuntimeInfo(t *testing.T) {
 		},
 	}
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.AlluxioRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.GooseFSRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JindoRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JuiceFSRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.EFCRuntime{})
 	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.Dataset{})
 	_ = v1.AddToScheme(s)
 	alluxioRuntimeObjs := []runtime.Object{}
-	goosefsRuntimeObjs := []runtime.Object{}
 	jindoRuntimeObjs := []runtime.Object{}
 	juicefsRuntimeObjs := []runtime.Object{}
 	efcRuntimeObjs := []runtime.Object{}
 
 	alluxioRuntimeObjs = append(alluxioRuntimeObjs, &alluxioRuntime, &dataAlluxio)
-	goosefsRuntimeObjs = append(goosefsRuntimeObjs, &goosefsRuntime, &dataGooseFS)
 	jindoRuntimeObjs = append(jindoRuntimeObjs, &jindoRuntime, &dataJindo)
 	for _, jfsRuntime := range juicefsRuntimes {
 		juicefsRuntimeObjs = append(juicefsRuntimeObjs, &jfsRuntime)
@@ -999,43 +830,10 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.AlluxioRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
+					Name:        "alluxio-fuse",
 				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "goosefs_test",
-			args: args{
-				client:    fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:      "goosefs",
-				namespace: "default",
-			},
-			want: &RuntimeInfo{
-				name:        "goosefs",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-				fuse: Fuse{
-					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "goosefs_test_fake",
-			args: args{
-				client:    fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:      "goosefs-fake",
-				namespace: "default",
-			},
-			want: &RuntimeInfo{
-				name:        "goosefs-fake",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-				fuse: Fuse{
-					CleanPolicy: v1alpha1.OnDemandCleanPolicy,
-				},
-			},
-			wantErr: true,
 		},
 		{
 			name: "jindo_test",
@@ -1051,6 +849,7 @@ func TestGetRuntimeInfo(t *testing.T) {
 				fuse: Fuse{
 					CleanPolicy:         v1alpha1.OnRuntimeDeletedCleanPolicy,
 					MetricsScrapeTarget: mountModeSelector{},
+					Name:                "jindo-jindofs-fuse",
 				},
 			},
 			wantErr: false,
@@ -1068,6 +867,7 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.JuiceFSRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
+					Name:        "juice-fuse",
 				},
 			},
 			wantErr: false,
@@ -1085,6 +885,7 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.JuiceFSRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnFuseChangedCleanPolicy,
+					Name:        "juice-update-strategy-on-idle-fuse",
 				},
 			},
 			wantErr: false,
@@ -1102,6 +903,7 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.JuiceFSRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnDemandCleanPolicy,
+					Name:        "juice-fake-fuse",
 				},
 			},
 			wantErr: true,
@@ -1119,6 +921,7 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.EFCRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnRuntimeDeletedCleanPolicy,
+					Name:        "efc-fuse",
 				},
 			},
 			wantErr: false,
@@ -1136,17 +939,19 @@ func TestGetRuntimeInfo(t *testing.T) {
 				runtimeType: common.EFCRuntime,
 				fuse: Fuse{
 					CleanPolicy: v1alpha1.OnDemandCleanPolicy,
+					Name:        "efc-fake-fuse",
 				},
 			},
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		It(tt.name, func() {
 			got, err := GetRuntimeInfo(tt.args.client, tt.args.name, tt.args.namespace)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetRuntimeInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
 			}
 			if got != nil {
 				got.SetAPIReader(nil)
@@ -1156,285 +961,253 @@ func TestGetRuntimeInfo(t *testing.T) {
 				tt.want.SetAPIReader(nil)
 			}
 
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetRuntimeInfo() = %#v\n, want %#v", got, tt.want)
+			if !tt.wantErr {
+				Expect(got).To(Equal(tt.want))
 			}
 		})
 	}
-}
+})
 
-func TestGetRuntimeStatus(t *testing.T) {
-	s := runtime.NewScheme()
+var _ = Describe("GetSyncRetryDuration", func() {
+	It("should get default sync retry duration", func() {
+		_, err := getSyncRetryDuration()
+		Expect(err).NotTo(HaveOccurred())
+	})
 
-	alluxioRuntime := v1alpha1.AlluxioRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "alluxio",
-			Namespace: "default",
-		},
-	}
-
-	goosefsRuntime := v1alpha1.GooseFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "goosefs",
-			Namespace: "default",
-		},
-	}
-
-	jindoRuntime := v1alpha1.JindoRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "jindo",
-			Namespace: "default",
-		},
-	}
-
-	juicefsRuntime := v1alpha1.JuiceFSRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "juice",
-			Namespace: "default",
-		},
-	}
-
-	efcRuntime := v1alpha1.EFCRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "efc",
-			Namespace: "default",
-		},
-	}
-
-	thinRuntime := v1alpha1.ThinRuntime{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "thin",
-			Namespace: "default",
-		},
-	}
-
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.AlluxioRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.GooseFSRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JindoRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.JuiceFSRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.EFCRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.ThinRuntime{})
-	s.AddKnownTypes(v1alpha1.GroupVersion, &v1alpha1.Dataset{})
-
-	_ = v1.AddToScheme(s)
-	alluxioRuntimeObjs := []runtime.Object{}
-	goosefsRuntimeObjs := []runtime.Object{}
-	jindoRuntimeObjs := []runtime.Object{}
-	juicefsRuntimeObjs := []runtime.Object{}
-	efcRuntimeObjs := []runtime.Object{}
-	thinRuntimeObjs := []runtime.Object{}
-
-	alluxioRuntimeObjs = append(alluxioRuntimeObjs, &alluxioRuntime)
-	goosefsRuntimeObjs = append(goosefsRuntimeObjs, &goosefsRuntime)
-	jindoRuntimeObjs = append(jindoRuntimeObjs, &jindoRuntime)
-	juicefsRuntimeObjs = append(juicefsRuntimeObjs, &juicefsRuntime)
-	efcRuntimeObjs = append(efcRuntimeObjs, &efcRuntime)
-	thinRuntimeObjs = append(thinRuntimeObjs, &thinRuntime)
-	type args struct {
-		client      client.Client
-		name        string
-		namespace   string
-		runtimeType string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "alluxio_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, alluxioRuntimeObjs...),
-				name:        "alluxio",
-				namespace:   "default",
-				runtimeType: common.AlluxioRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "alluxio_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, alluxioRuntimeObjs...),
-				name:        "alluxio-error",
-				namespace:   "default",
-				runtimeType: common.AlluxioRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "goosefs_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:        "goosefs",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "goosefs_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, goosefsRuntimeObjs...),
-				name:        "goosefs-error",
-				namespace:   "default",
-				runtimeType: common.GooseFSRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "jindo_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, jindoRuntimeObjs...),
-				name:        "jindo",
-				namespace:   "default",
-				runtimeType: common.JindoRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "jindo_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, jindoRuntimeObjs...),
-				name:        "jindo-error",
-				namespace:   "default",
-				runtimeType: common.JindoRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "juicefs_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, juicefsRuntimeObjs...),
-				name:        "juice",
-				namespace:   "default",
-				runtimeType: common.JuiceFSRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "juicefs_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, juicefsRuntimeObjs...),
-				name:        "juice-error",
-				namespace:   "default",
-				runtimeType: common.JuiceFSRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "efc_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, efcRuntimeObjs...),
-				name:        "efc",
-				namespace:   "default",
-				runtimeType: common.EFCRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "efc_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, efcRuntimeObjs...),
-				name:        "efc-error",
-				namespace:   "default",
-				runtimeType: common.EFCRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "thin_test",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, thinRuntimeObjs...),
-				name:        "thin",
-				namespace:   "default",
-				runtimeType: common.ThinRuntime,
-			},
-			wantErr: false,
-		},
-		{
-			name: "thin_test_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, thinRuntimeObjs...),
-				name:        "thin-error",
-				namespace:   "default",
-				runtimeType: common.ThinRuntime,
-			},
-			wantErr: true,
-		},
-		{
-			name: "default_error",
-			args: args{
-				client:      fakeutils.NewFakeClientWithScheme(s, thinRuntimeObjs...),
-				name:        "thin-not-exit",
-				namespace:   "default",
-				runtimeType: "thin-not-exit",
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetRuntimeStatus(tt.args.client, tt.args.runtimeType, tt.args.name, tt.args.namespace)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetRuntimeInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
+	It("should fail with invalid duration format", func() {
+		oldVal, wasSet := os.LookupEnv(syncRetryDurationEnv)
+		err := os.Setenv(syncRetryDurationEnv, "s")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			if wasSet {
+				_ = os.Setenv(syncRetryDurationEnv, oldVal)
+			} else {
+				_ = os.Unsetenv(syncRetryDurationEnv)
 			}
 		})
-	}
-}
 
-func TestGetSyncRetryDuration(t *testing.T) {
+		_, err = getSyncRetryDuration()
+		Expect(err).To(HaveOccurred())
+	})
 
-	_, err := getSyncRetryDuration()
-	if err != nil {
-		t.Errorf("Failed to getSyncRetryDuration %v", err)
-	}
+	It("should successfully parse valid duration", func() {
+		oldVal, wasSet := os.LookupEnv(syncRetryDurationEnv)
+		err := os.Setenv(syncRetryDurationEnv, "3s")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			if wasSet {
+				_ = os.Setenv(syncRetryDurationEnv, oldVal)
+			} else {
+				_ = os.Unsetenv(syncRetryDurationEnv)
+			}
+		})
 
-	t.Setenv(syncRetryDurationEnv, "s")
-	_, err = getSyncRetryDuration()
-	if err == nil {
-		t.Errorf("Expect to get err, but got nil")
-	}
+		d, err := getSyncRetryDuration()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(d).NotTo(BeNil())
+		Expect(*d).To(Equal(time.Duration(3 * time.Second)))
+	})
+})
 
-	t.Setenv(syncRetryDurationEnv, "3s")
-	d, err := getSyncRetryDuration()
-	if err != nil {
-		t.Errorf("Failed to getSyncRetryDuration %v", err)
-	}
-	if d == nil {
-		t.Errorf("Failed to set the duration, expect %v, got %v", time.Duration(3*time.Second), d)
-	}
-}
+var _ = Describe("PermitSync", func() {
+	It("should control sync permission based on time", func() {
+		id := "test id"
+		ctx := cruntime.ReconcileRequestContext{
+			NamespacedName: types.NamespacedName{
+				Name:      "hbase",
+				Namespace: "fluid",
+			},
+			Log:     fakeutils.NullLogger(),
+			Runtime: &v1alpha1.AlluxioRuntime{},
+		}
 
-func TestPermitSync(t *testing.T) {
+		templateEngine := NewTemplateEngine(nil, id, ctx)
+		permit := templateEngine.permitSync(ctx.NamespacedName)
+		Expect(permit).To(BeTrue(), "expect permit initially")
 
-	id := "test id"
-	ctx := cruntime.ReconcileRequestContext{
-		NamespacedName: types.NamespacedName{
-			Name:      "hbase",
-			Namespace: "fluid",
-		},
-		Log:     fakeutils.NullLogger(),
-		Runtime: &v1alpha1.AlluxioRuntime{},
-	}
+		// Set a long syncRetryDuration to ensure the test is not flaky
+		templateEngine.syncRetryDuration = 1 * time.Hour
+		templateEngine.setTimeOfLastSync()
+		permit = templateEngine.permitSync(ctx.NamespacedName)
+		Expect(permit).To(BeFalse(), "expect not permit immediately after sync")
 
-	templateEngine := NewTemplateEngine(nil, id, ctx)
-	permit := templateEngine.permitSync(types.NamespacedName{Namespace: ctx.Namespace, Name: ctx.Namespace})
-	if !permit {
-		t.Errorf("expect permit, but got %v", permit)
-	}
+		// Now set a very short duration and verify permit is granted after waiting
+		templateEngine.setTimeOfLastSync()
+		templateEngine.syncRetryDuration = 1 * time.Microsecond
+		time.Sleep(10 * time.Millisecond) // Wait longer than syncRetryDuration
+		permit = templateEngine.permitSync(ctx.NamespacedName)
+		Expect(permit).To(BeTrue(), "expect permit after retry duration elapsed")
+	})
+})
 
-	templateEngine.setTimeOfLastSync()
-	permit = templateEngine.permitSync(types.NamespacedName{Namespace: ctx.Namespace, Name: ctx.Namespace})
-	if permit {
-		t.Errorf("expect not permit, but got %v", permit)
-	}
+var _ = Describe("GetDDCRuntimeStatus", func() {
+	It("should get AlluxioRuntime status successfully", func() {
+		runtime := &v1alpha1.AlluxioRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-alluxio",
+				Namespace: "default",
+			},
+			Status: v1alpha1.RuntimeStatus{
+				MasterPhase: v1alpha1.RuntimePhaseReady,
+			},
+		}
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme, runtime)
 
-	templateEngine.setTimeOfLastSync()
-	templateEngine.syncRetryDuration = 1 * time.Microsecond
-	time.Sleep(1 * time.Second)
-	permit = templateEngine.permitSync(types.NamespacedName{Namespace: ctx.Namespace, Name: ctx.Namespace})
-	if !permit {
-		t.Errorf("expect permit, but got %v", permit)
-	}
-}
+		status, err := GetDDCRuntimeStatus(client, common.AlluxioRuntime, "test-alluxio", "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).NotTo(BeNil())
+		Expect(status.MasterPhase).To(Equal(v1alpha1.RuntimePhaseReady))
+	})
+
+	It("should get JindoRuntime status successfully", func() {
+		runtime := &v1alpha1.JindoRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-jindo",
+				Namespace: "default",
+			},
+			Status: v1alpha1.RuntimeStatus{
+				MasterPhase: v1alpha1.RuntimePhaseReady,
+			},
+		}
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme, runtime)
+
+		status, err := GetDDCRuntimeStatus(client, common.JindoRuntime, "test-jindo", "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).NotTo(BeNil())
+		Expect(status.MasterPhase).To(Equal(v1alpha1.RuntimePhaseReady))
+	})
+
+	It("should get JuiceFSRuntime status successfully", func() {
+		runtime := &v1alpha1.JuiceFSRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-juicefs",
+				Namespace: "default",
+			},
+			Status: v1alpha1.RuntimeStatus{
+				MasterPhase: v1alpha1.RuntimePhaseReady,
+			},
+		}
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme, runtime)
+
+		status, err := GetDDCRuntimeStatus(client, common.JuiceFSRuntime, "test-juicefs", "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).NotTo(BeNil())
+		Expect(status.MasterPhase).To(Equal(v1alpha1.RuntimePhaseReady))
+	})
+
+	It("should return error for unsupported runtime type", func() {
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme)
+
+		_, err := GetDDCRuntimeStatus(client, "unsupported-runtime", "test", "default")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unsupported DDC runtime type"))
+	})
+
+	It("should return error when runtime not found", func() {
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme)
+
+		_, err := GetDDCRuntimeStatus(client, common.AlluxioRuntime, "non-existent", "default")
+		Expect(err).To(HaveOccurred())
+	})
+})
+
+var _ = Describe("GetRuntimeStatusAccessor", func() {
+	It("should get DDCRuntimeStatusAccessor for AlluxioRuntime", func() {
+		runtime := &v1alpha1.AlluxioRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-alluxio",
+				Namespace: "default",
+			},
+			Status: v1alpha1.RuntimeStatus{
+				CacheAffinity: &corev1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+						NodeSelectorTerms: []corev1.NodeSelectorTerm{
+							{
+								MatchExpressions: []corev1.NodeSelectorRequirement{
+									{
+										Key:      "test-key",
+										Operator: corev1.NodeSelectorOpIn,
+										Values:   []string{"value1"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme, runtime)
+
+		accessor, err := GetRuntimeStatusAccessor(client, common.AlluxioRuntime, "test-alluxio", "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accessor).NotTo(BeNil())
+
+		// Test that it's a DDCRuntimeStatusAccessor
+		ddcAccessor, ok := accessor.(*DDCRuntimeStatusAccessor)
+		Expect(ok).To(BeTrue())
+		Expect(ddcAccessor).NotTo(BeNil())
+
+		// Test GetCacheAffinity
+		affinity, err := accessor.GetCacheAffinity()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(affinity).NotTo(BeNil())
+		Expect(affinity.RequiredDuringSchedulingIgnoredDuringExecution).NotTo(BeNil())
+	})
+
+	It("should get CacheRuntimeStatusAccessor for CacheRuntime", func() {
+		runtime := &v1alpha1.CacheRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cache",
+				Namespace: "default",
+			},
+			Status: v1alpha1.CacheRuntimeStatus{
+				CacheAffinity: &corev1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+						NodeSelectorTerms: []corev1.NodeSelectorTerm{
+							{
+								MatchExpressions: []corev1.NodeSelectorRequirement{
+									{
+										Key:      "cache-key",
+										Operator: corev1.NodeSelectorOpIn,
+										Values:   []string{"cache-value"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme, runtime)
+
+		accessor, err := GetRuntimeStatusAccessor(client, common.CacheRuntime, "test-cache", "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accessor).NotTo(BeNil())
+
+		// Test that it's a CacheRuntimeStatusAccessor
+		cacheAccessor, ok := accessor.(*CacheRuntimeStatusAccessor)
+		Expect(ok).To(BeTrue())
+		Expect(cacheAccessor).NotTo(BeNil())
+
+		// Test GetCacheAffinity
+		affinity, err := accessor.GetCacheAffinity()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(affinity).NotTo(BeNil())
+		Expect(affinity.RequiredDuringSchedulingIgnoredDuringExecution).NotTo(BeNil())
+	})
+
+	It("should return error for unsupported runtime type", func() {
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme)
+
+		_, err := GetRuntimeStatusAccessor(client, "unsupported-type", "test", "default")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("fail to get runtime status accessor"))
+	})
+
+	It("should return error when runtime not found", func() {
+		client := fakeutils.NewFakeClientWithScheme(v1alpha1.UnitTestScheme)
+
+		_, err := GetRuntimeStatusAccessor(client, common.AlluxioRuntime, "non-existent", "default")
+		Expect(err).To(HaveOccurred())
+	})
+})

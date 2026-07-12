@@ -78,7 +78,7 @@ func TestDestroyWorker(t *testing.T) {
 		Spec: datav1alpha1.DatasetSpec{PlacementMode: datav1alpha1.ExclusiveMode},
 	})
 
-	// runtimeInfoSpark tests destroy Worker in shareMode mode.
+	// runtimeInfoHadoop tests destroy Worker in shareMode mode.
 	runtimeInfoHadoop, err := base.BuildRuntimeInfo("hadoop", "fluid", common.AlluxioRuntime)
 	if err != nil {
 		t.Errorf("fail to create the runtimeInfo with error %v", err)
@@ -90,6 +90,19 @@ func TestDestroyWorker(t *testing.T) {
 		"node-select": "true",
 	}
 	runtimeInfoHadoop.SetFuseNodeSelector(nodeSelector)
+
+	alluxioRuntimeSpark := &datav1alpha1.AlluxioRuntime{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "spark",
+			Namespace: "fluid",
+		},
+	}
+	alluxioRuntimeHadoop := &datav1alpha1.AlluxioRuntime{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hadoop",
+			Namespace: "fluid",
+		},
+	}
 
 	var nodeInputs = []*corev1.Node{
 		{
@@ -144,6 +157,7 @@ func TestDestroyWorker(t *testing.T) {
 	for _, nodeInput := range nodeInputs {
 		testNodes = append(testNodes, nodeInput.DeepCopy())
 	}
+	testNodes = append(testNodes, alluxioRuntimeSpark, alluxioRuntimeHadoop)
 
 	client := fake.NewFakeClientWithScheme(testScheme, testNodes...)
 
@@ -206,18 +220,17 @@ func TestDestroyWorker(t *testing.T) {
 	for _, test := range testCase {
 		engine := &AlluxioEngine{Log: fake.NullLogger(), runtimeInfo: test.runtimeInfo}
 		engine.Client = client
+		engine.Helper = ctrl.BuildHelper(test.runtimeInfo, client, engine.Log)
 		engine.name = test.runtimeInfo.GetName()
 		engine.namespace = test.runtimeInfo.GetNamespace()
 		if err != nil {
 			t.Errorf("fail to exec the function with the error %v", err)
 		}
-		currentWorkers, err := engine.destroyWorkers(test.expectedWorkers)
+		err := engine.destroyWorkers()
 		if err != nil {
 			t.Errorf("fail to exec the function with the error %v", err)
 		}
-		if currentWorkers != test.wantedNodeNumber {
-			t.Errorf("shutdown the worker with the wrong number of the workers")
-		}
+
 		for _, node := range nodeInputs {
 			newNode, err := kubeclient.GetNode(client, node.Name)
 			if err != nil {

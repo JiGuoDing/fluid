@@ -80,6 +80,7 @@ var _ = Describe("TemplateEngine", func() {
 	// Check if all expectations have been met after each It
 	AfterEach(func() {
 		ctrl.Finish()
+		_ = os.Unsetenv("FLUID_SYNC_RETRY_DURATION")
 	})
 
 	Describe("Setup", func() {
@@ -131,6 +132,7 @@ var _ = Describe("TemplateEngine", func() {
 					impl.EXPECT().CheckRuntimeHealthy().Return(nil).Times(1),
 					impl.EXPECT().CheckAndUpdateRuntimeStatus().Return(true, nil).Times(1),
 					impl.EXPECT().UpdateCacheOfDataset().Return(nil).Times(1),
+					impl.EXPECT().ShouldSyncDatasetMounts().Return(false, nil).Times(1),
 					impl.EXPECT().ShouldUpdateUFS().Return(&utils.UFSToUpdate{}).Times(1),
 					impl.EXPECT().SyncScheduleInfoToCacheNodes().Return(nil).Times(1),
 				)
@@ -166,6 +168,8 @@ var _ = Describe("TemplateEngine", func() {
 					impl.EXPECT().CheckRuntimeHealthy().Return(nil).Times(1),
 					impl.EXPECT().CheckAndUpdateRuntimeStatus().Return(true, nil).Times(1),
 					impl.EXPECT().UpdateCacheOfDataset().Return(nil).Times(1),
+					impl.EXPECT().ShouldSyncDatasetMounts().Return(true, nil).Times(1),
+					impl.EXPECT().SyncDatasetMounts().Return(nil).Times(1),
 					impl.EXPECT().ShouldUpdateUFS().Return(ufsToUpdate).Times(1),
 					impl.EXPECT().UpdateOnUFSChange(ufsToUpdate).Times(1),
 					impl.EXPECT().SyncScheduleInfoToCacheNodes().Return(nil).Times(1),
@@ -177,15 +181,15 @@ var _ = Describe("TemplateEngine", func() {
 
 	Describe("CreateVolume", func() {
 		It("Should create volume successfully", func() {
-			impl.EXPECT().CreateVolume().Return(nil).Times(1)
-			Expect(t.CreateVolume()).To(BeNil())
+			impl.EXPECT().CreateVolume(gomock.Any()).Return(nil).Times(1)
+			Expect(t.CreateVolume(context.Background())).To(BeNil())
 		})
 	})
 
 	Describe("DeleteVolume", func() {
 		It("Should delete  volume successfully", func() {
-			impl.EXPECT().DeleteVolume().Return(nil).Times(1)
-			Expect(t.DeleteVolume()).To(BeNil())
+			impl.EXPECT().DeleteVolume(gomock.Any()).Return(nil).Times(1)
+			Expect(t.DeleteVolume(context.Background())).To(BeNil())
 		})
 	})
 

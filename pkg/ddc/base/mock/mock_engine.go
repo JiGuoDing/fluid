@@ -21,10 +21,12 @@ limitations under the License.
 package base
 
 import (
+	context "context"
+	reflect "reflect"
+
 	dataoperation "github.com/fluid-cloudnative/fluid/pkg/dataoperation"
 	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
 	"github.com/golang/mock/gomock"
-	reflect "reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/fluid-cloudnative/fluid/api/v1alpha1"
@@ -95,31 +97,31 @@ func (mr *MockEngineMockRecorder) CheckRuntimeReady() *gomock.Call {
 }
 
 // CreateVolume mocks base method.
-func (m *MockEngine) CreateVolume() error {
+func (m *MockEngine) CreateVolume(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateVolume")
+	ret := m.ctrl.Call(m, "CreateVolume", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateVolume indicates an expected call of CreateVolume.
-func (mr *MockEngineMockRecorder) CreateVolume() *gomock.Call {
+func (mr *MockEngineMockRecorder) CreateVolume(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockEngine)(nil).CreateVolume))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockEngine)(nil).CreateVolume), ctx)
 }
 
 // DeleteVolume mocks base method.
-func (m *MockEngine) DeleteVolume() error {
+func (m *MockEngine) DeleteVolume(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteVolume")
+	ret := m.ctrl.Call(m, "DeleteVolume", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteVolume indicates an expected call of DeleteVolume.
-func (mr *MockEngineMockRecorder) DeleteVolume() *gomock.Call {
+func (mr *MockEngineMockRecorder) DeleteVolume(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolume", reflect.TypeOf((*MockEngine)(nil).DeleteVolume))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolume", reflect.TypeOf((*MockEngine)(nil).DeleteVolume), ctx)
 }
 
 // ID mocks base method.
@@ -234,6 +236,8 @@ func (mr *MockDataloaderMockRecorder) CheckRuntimeReady() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckRuntimeReady", reflect.TypeOf((*MockDataloader)(nil).CheckRuntimeReady))
 }
+
+var _ base.Implement = (*MockImplement)(nil)
 
 // MockImplement is a mock of implement interface.
 type MockImplement struct {
@@ -383,32 +387,38 @@ func (m *MockImplement) GetDataOperationValueFile(ctx runtime.ReconcileRequestCo
 	return ret0, ret1
 }
 
+// GetDataOperationValueFile indicates an expected call of GetDataOperationValueFile.
+func (mr *MockImplementMockRecorder) GetDataOperationValueFile(ctx, operation interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataOperationValueFile", reflect.TypeOf((*MockImplement)(nil).GetDataOperationValueFile), ctx, operation)
+}
+
 // CreateVolume mocks base method.
-func (m *MockImplement) CreateVolume() error {
+func (m *MockImplement) CreateVolume(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateVolume")
+	ret := m.ctrl.Call(m, "CreateVolume", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateVolume indicates an expected call of CreateVolume.
-func (mr *MockImplementMockRecorder) CreateVolume() *gomock.Call {
+func (mr *MockImplementMockRecorder) CreateVolume(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockImplement)(nil).CreateVolume))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockImplement)(nil).CreateVolume), ctx)
 }
 
 // DeleteVolume mocks base method.
-func (m *MockImplement) DeleteVolume() error {
+func (m *MockImplement) DeleteVolume(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteVolume")
+	ret := m.ctrl.Call(m, "DeleteVolume", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteVolume indicates an expected call of DeleteVolume.
-func (mr *MockImplementMockRecorder) DeleteVolume() *gomock.Call {
+func (mr *MockImplementMockRecorder) DeleteVolume(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolume", reflect.TypeOf((*MockImplement)(nil).DeleteVolume))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolume", reflect.TypeOf((*MockImplement)(nil).DeleteVolume), ctx)
 }
 
 // FreeStorageBytes mocks base method.
@@ -654,6 +664,35 @@ func (m *MockImplement) UpdateDatasetStatus(phase v1alpha1.DatasetPhase) error {
 func (mr *MockImplementMockRecorder) UpdateDatasetStatus(phase interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDatasetStatus", reflect.TypeOf((*MockImplement)(nil).UpdateDatasetStatus), phase)
+}
+
+// ShouldSyncDatasetMounts mocks base method.
+func (m *MockImplement) ShouldSyncDatasetMounts() (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShouldSyncDatasetMounts")
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShouldSyncDatasetMounts indicates an expected call of ShouldSyncDatasetMounts.
+func (mr *MockImplementMockRecorder) ShouldSyncDatasetMounts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSyncDatasetMounts", reflect.TypeOf((*MockImplement)(nil).ShouldSyncDatasetMounts))
+}
+
+// SyncDatasetMounts mocks base method.
+func (m *MockImplement) SyncDatasetMounts() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncDatasetMounts")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncDatasetMounts indicates an expected call of SyncDatasetMounts.
+func (mr *MockImplementMockRecorder) SyncDatasetMounts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncDatasetMounts", reflect.TypeOf((*MockImplement)(nil).SyncDatasetMounts))
 }
 
 // UpdateOnUFSChange mocks base method.

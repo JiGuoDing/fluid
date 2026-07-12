@@ -17,125 +17,115 @@
 package thin
 
 import (
-	"reflect"
-	"testing"
-
+	"encoding/json"
+	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/fake"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestThinEngine_extractVolumeInfo(t *testing.T) {
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc",
-			Namespace: "fluid",
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			VolumeName: "test-pv",
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimBound,
-		},
-	}
+var _ = Describe("ThinEngine extractVolumeInfo", func() {
+	var engine ThinEngine
 
-	pv := &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-pv",
-		},
-		Spec: corev1.PersistentVolumeSpec{
-			MountOptions: []string{"rw", "noexec"},
-			PersistentVolumeSource: corev1.PersistentVolumeSource{
-				CSI: &corev1.CSIPersistentVolumeSource{
-					NodePublishSecretRef: &corev1.SecretReference{
-						Name:      "my-secret",
-						Namespace: "node-publish-secrets",
-					},
-					VolumeHandle: "test-pv",
-					VolumeAttributes: map[string]string{
-						"test-attr":  "true",
-						"test-attr2": "foobar",
+	BeforeEach(func() {
+		pvc := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pvc",
+				Namespace: "fluid",
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				VolumeName: "test-pv",
+			},
+			Status: corev1.PersistentVolumeClaimStatus{
+				Phase: corev1.ClaimBound,
+			},
+		}
+
+		pv := &corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-pv",
+			},
+			Spec: corev1.PersistentVolumeSpec{
+				MountOptions: []string{"rw", "noexec"},
+				PersistentVolumeSource: corev1.PersistentVolumeSource{
+					CSI: &corev1.CSIPersistentVolumeSource{
+						NodePublishSecretRef: &corev1.SecretReference{
+							Name:      "my-secret",
+							Namespace: "node-publish-secrets",
+						},
+						VolumeHandle: "test-pv",
+						VolumeAttributes: map[string]string{
+							"test-attr":  "true",
+							"test-attr2": "foobar",
+						},
 					},
 				},
 			},
-		},
-	}
+		}
 
-	client := fake.NewFakeClientWithScheme(testScheme, pvc, pv)
+		client := fake.NewFakeClientWithScheme(testScheme, pvc, pv)
 
-	engine := ThinEngine{
-		name:      "thin-test",
-		namespace: "fluid",
-		Client:    client,
-		Log:       fake.NullLogger(),
-	}
+		engine = ThinEngine{
+			name:      "thin-test",
+			namespace: "fluid",
+			Client:    client,
+			Log:       fake.NullLogger(),
+		}
+	})
 
-	tests := []struct {
-		name             string
-		pvcName          string
-		wantCsiInfo      *corev1.CSIPersistentVolumeSource
-		wantMountOptions []string
-		wantErr          bool
-	}{
-		{
-			name:    "testExtractVolumeInfo",
-			pvcName: "test-pvc",
-			wantCsiInfo: &corev1.CSIPersistentVolumeSource{
-				NodePublishSecretRef: &corev1.SecretReference{
-					Name:      "my-secret",
-					Namespace: "node-publish-secrets",
-				},
-				VolumeHandle: "test-pv",
-				VolumeAttributes: map[string]string{
-					"test-attr":  "true",
-					"test-attr2": "foobar",
-				},
+	It("should extract volume info correctly", func() {
+		wantCsiInfo := &corev1.CSIPersistentVolumeSource{
+			NodePublishSecretRef: &corev1.SecretReference{
+				Name:      "my-secret",
+				Namespace: "node-publish-secrets",
 			},
-			wantMountOptions: []string{"rw", "noexec"},
-			wantErr:          false,
+			VolumeHandle: "test-pv",
+			VolumeAttributes: map[string]string{
+				"test-attr":  "true",
+				"test-attr2": "foobar",
+			},
+		}
+		wantMountOptions := []string{"rw", "noexec"}
+
+		gotCsiInfo, gotMountOptions, err := engine.extractVolumeInfo("test-pvc")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gotCsiInfo).To(Equal(wantCsiInfo))
+		Expect(gotMountOptions).To(Equal(wantMountOptions))
+	})
+})
+
+var _ = Describe("ThinEngine extractVolumeMountOptions", func() {
+	var engine ThinEngine
+
+	BeforeEach(func() {
+		engine = ThinEngine{}
+	})
+
+	DescribeTable("extracting mount options from PV",
+		func(pv *corev1.PersistentVolume, wantMountOptions []string, wantErr bool) {
+			gotMountOptions, err := engine.extractVolumeMountOptions(pv)
+			if wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gotMountOptions).To(Equal(wantMountOptions))
+			}
 		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotCsiInfo, gotMountOptions, err := engine.extractVolumeInfo(tt.pvcName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ThinEngine.extractVolumeInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotCsiInfo, tt.wantCsiInfo) {
-				t.Errorf("ThinEngine.extractVolumeInfo() gotCsiInfo = %v, want %v", gotCsiInfo, tt.wantCsiInfo)
-			}
-			if !reflect.DeepEqual(gotMountOptions, tt.wantMountOptions) {
-				t.Errorf("ThinEngine.extractVolumeInfo() gotMountOptions = %v, want %v", gotMountOptions, tt.wantMountOptions)
-			}
-		})
-	}
-}
-
-func TestThinEngine_extractVolumeMountOptions(t *testing.T) {
-	engine := ThinEngine{}
-
-	tests := []struct {
-		name             string
-		pv               *corev1.PersistentVolume
-		wantMountOptions []string
-		wantErr          bool
-	}{
-		{
-			name: "test_mount_options_in_annotation",
-			pv: &corev1.PersistentVolume{
+		Entry("mount options in annotation",
+			&corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						corev1.MountOptionAnnotation: "rw,noexec,testOpts",
 					},
 				},
 			},
-			wantMountOptions: []string{"rw", "noexec", "testOpts"},
-			wantErr:          false,
-		},
-		{
-			name: "test_mount_options_in_proerty",
-			pv: &corev1.PersistentVolume{
+			[]string{"rw", "noexec", "testOpts"},
+			false,
+		),
+		Entry("mount options in property",
+			&corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{},
 				},
@@ -143,20 +133,106 @@ func TestThinEngine_extractVolumeMountOptions(t *testing.T) {
 					MountOptions: []string{"ro", "noexec"},
 				},
 			},
-			wantMountOptions: []string{"ro", "noexec"},
-			wantErr:          false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotMountOptions, err := engine.extractVolumeMountOptions(tt.pv)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ThinEngine.extractVolumeMountOptions() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotMountOptions, tt.wantMountOptions) {
-				t.Errorf("ThinEngine.extractVolumeMountOptions() = %v, want %v", gotMountOptions, tt.wantMountOptions)
-			}
+			[]string{"ro", "noexec"},
+			false,
+		),
+		Entry("no mount options configured",
+			&corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       corev1.PersistentVolumeSpec{},
+			},
+			nil,
+			false,
+		),
+	)
+})
+
+var _ = Describe("ThinEngine transformFuseConfig", func() {
+	var (
+		engine  ThinEngine
+		runtime *datav1alpha1.ThinRuntime
+		dataset *datav1alpha1.Dataset
+		value   *ThinValue
+	)
+
+	BeforeEach(func() {
+		engine = ThinEngine{
+			name:      "thin-test",
+			namespace: "fluid",
+			Client:    fake.NewFakeClientWithScheme(testScheme),
+			Log:       fake.NullLogger(),
+		}
+		runtime = &datav1alpha1.ThinRuntime{
+			ObjectMeta: metav1.ObjectMeta{Name: "thin-test", Namespace: "fluid"},
+		}
+		dataset = &datav1alpha1.Dataset{}
+		value = &ThinValue{}
+	})
+
+	It("returns an error when the configured fuse config storage is unsupported", func() {
+		By("using an unsupported storage backend")
+		GinkgoTB().Setenv(EnvFuseConfigStorage, "invalid")
+		dataset.Spec.Mounts = []datav1alpha1.Mount{{MountPoint: "s3://bucket/data"}}
+
+		err := engine.transformFuseConfig(runtime, dataset, value)
+
+		Expect(err).To(MatchError(ContainSubstring("FUSE config storage \"invalid\" is not supported")))
+	})
+
+	It("returns an error when a pvc mount is not yet bound", func() {
+		By("providing a pvc mount whose claim is still pending")
+		pendingPVC := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "pending-pvc", Namespace: "fluid"},
+			Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+		}
+		engine.Client = fake.NewFakeClientWithScheme(testScheme, pendingPVC)
+		dataset.Spec.Mounts = []datav1alpha1.Mount{{MountPoint: "pvc://pending-pvc"}}
+
+		err := engine.transformFuseConfig(runtime, dataset, value)
+
+		Expect(err).To(MatchError(ContainSubstring("failed to extract volume info from PersistentVolumeClaim \"pending-pvc\"")))
+		Expect(err).To(MatchError(ContainSubstring("persistent volume claim pending-pvc not bounded yet")))
+	})
+
+	It("serializes secret-backed mount options when fuse config storage is secret", func() {
+		GinkgoTB().Setenv(EnvFuseConfigStorage, "secret")
+		engine.Client = fake.NewFakeClientWithScheme(testScheme, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-s3-secret", Namespace: "fluid"},
+			Data: map[string][]byte{
+				"access-key-id":     []byte("test-ak"),
+				"access-key-secret": []byte("test-sk"),
+			},
 		})
-	}
-}
+		dataset.Spec.Mounts = []datav1alpha1.Mount{{
+			MountPoint: "s3://bucket/data",
+			Options: map[string]string{
+				"endpoint": "https://minio.example.com",
+			},
+			EncryptOptions: []datav1alpha1.EncryptOption{{
+				Name: "access-key-id",
+				ValueFrom: datav1alpha1.EncryptOptionSource{
+					SecretKeyRef: datav1alpha1.SecretKeySelector{Name: "my-s3-secret", Key: "access-key-id"},
+				},
+			}, {
+				Name: "access-key-secret",
+				ValueFrom: datav1alpha1.EncryptOptionSource{
+					SecretKeyRef: datav1alpha1.SecretKeySelector{Name: "my-s3-secret", Key: "access-key-secret"},
+				},
+			}},
+		}}
+
+		err := engine.transformFuseConfig(runtime, dataset, value)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(value.Fuse.ConfigStorage).To(Equal("secret"))
+		Expect(value.Fuse.Volumes).To(BeEmpty())
+		Expect(value.Fuse.VolumeMounts).To(BeEmpty())
+
+		config := &Config{}
+		Expect(json.Unmarshal([]byte(value.Fuse.ConfigValue), config)).To(Succeed())
+		Expect(config.Mounts).To(HaveLen(1))
+		Expect(config.Mounts[0].Options).To(HaveKeyWithValue("endpoint", "https://minio.example.com"))
+		Expect(config.Mounts[0].Options).To(HaveKeyWithValue("access-key-id", "test-ak"))
+		Expect(config.Mounts[0].Options).To(HaveKeyWithValue("access-key-secret", "test-sk"))
+	})
+})

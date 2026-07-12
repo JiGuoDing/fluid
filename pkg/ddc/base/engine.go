@@ -17,6 +17,8 @@ limitations under the License.
 package base
 
 import (
+	"context"
+
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/dataoperation"
 	cruntime "github.com/fluid-cloudnative/fluid/pkg/runtime"
@@ -38,10 +40,10 @@ type Engine interface {
 	Setup(ctx cruntime.ReconcileRequestContext) (ready bool, err error)
 
 	// Setup the Volume
-	CreateVolume() (err error)
+	CreateVolume(ctx context.Context) (err error)
 
 	// Destroy the Volume
-	DeleteVolume() (err error)
+	DeleteVolume(ctx context.Context) (err error)
 
 	// Sync syncs the alluxio runtime
 	Sync(ctx cruntime.ReconcileRequestContext) error
@@ -96,6 +98,13 @@ type Implement interface {
 	// PrepareUFS prepare the mounts and metadata if it's not ready
 	PrepareUFS() (err error)
 
+	// ShouldSyncDatasetMounts check if we need to sync the dataset mounts
+	ShouldSyncDatasetMounts() (should bool, err error)
+
+	// SyncDatasetMounts sync the mounts in Dataset's spec into cache engine.
+	// The func should not only handle mounts changes in the Dataset's spec, but also handle cases where a cache engine lose some mount info because of unexpected crashes.
+	SyncDatasetMounts() (err error)
+
 	// ShouldUpdateUFS check if we need to update the ufs and return all ufs to update
 	// If the ufs have changed and the engine supports add/remove mount points dynamically,
 	// then we need to UpdateOnUFSChange
@@ -118,7 +127,7 @@ type Implement interface {
 	CheckAndUpdateRuntimeStatus() (ready bool, err error)
 
 	// CreateVolume create the pv and pvc for the Dataset
-	CreateVolume() error
+	CreateVolume(ctx context.Context) error
 
 	// SyncReplicas syncs the replicas
 	SyncReplicas(ctx cruntime.ReconcileRequestContext) error
@@ -127,7 +136,7 @@ type Implement interface {
 	SyncMetadata() (err error)
 
 	// DeleteVolume Destroy the Volume
-	DeleteVolume() (err error)
+	DeleteVolume(ctx context.Context) (err error)
 
 	// BindToDataset binds the engine to dataset
 	BindToDataset() (err error)

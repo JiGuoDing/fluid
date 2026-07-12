@@ -17,10 +17,15 @@ limitations under the License.
 package jindocache
 
 import (
-	"reflect"
-	"testing"
+	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
+	"github.com/fluid-cloudnative/fluid/pkg/common"
+	"github.com/fluid-cloudnative/fluid/pkg/utils/fake"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var cfg = `
@@ -53,35 +58,53 @@ client.oss.upload.threads = 4
 client.storage.rpc.port = 18001
 `
 
-func Test_parsePortsFromConfigMap(t *testing.T) {
-	type args struct {
-		configMap *v1.ConfigMap
-	}
-	tests := []struct {
-		name      string
-		args      args
-		wantPorts []int
-		wantErr   bool
-	}{
-		{
-			name: "parse configMap",
-			args: args{configMap: &v1.ConfigMap{Data: map[string]string{
+var _ = Describe("parsePortsFromConfigMap", func() {
+	It("should parse ports from configMap", func() {
+		configMap := &v1.ConfigMap{
+			Data: map[string]string{
 				"jindocache.cfg": cfg,
-			}}},
-			wantPorts: []int{18000, 18001},
-			wantErr:   false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotPorts, err := parsePortsFromConfigMap(tt.args.configMap)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parsePortsFromConfigMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotPorts, tt.wantPorts) {
-				t.Errorf("parsePortsFromConfigMap() gotPorts = %v, want %v", gotPorts, tt.wantPorts)
-			}
-		})
-	}
-}
+			},
+		}
+
+		gotPorts, err := parsePortsFromConfigMap(configMap)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gotPorts).To(Equal([]int{18000, 18001}))
+	})
+
+	It("should collect reserved ports from jindo runtime configmaps", func() {
+		dataset := &datav1alpha1.Dataset{
+			ObjectMeta: metav1.ObjectMeta{Name: "spark", Namespace: "fluid"},
+			Status: datav1alpha1.DatasetStatus{
+				Runtimes: []datav1alpha1.Runtime{{
+					Category:  common.AccelerateCategory,
+					Name:      "spark",
+					Namespace: "fluid",
+					Type:      "jindo",
+				}},
+			},
+		}
+		nonJindoDataset := &datav1alpha1.Dataset{
+			ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "fluid"},
+			Status: datav1alpha1.DatasetStatus{
+				Runtimes: []datav1alpha1.Runtime{{
+					Name:      "other",
+					Namespace: "fluid",
+					Type:      "alluxio",
+				}},
+			},
+		}
+		configMap := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "spark-jindofs-config", Namespace: "fluid"},
+			Data:       map[string]string{"jindocache.cfg": cfg},
+		}
+
+		objects := []runtime.Object{dataset, nonJindoDataset, configMap}
+		fakeClient := fake.NewFakeClientWithScheme(testScheme, objects...)
+
+		ports, err := GetReservedPorts(fakeClient)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ports).To(Equal([]int{18000, 18001}))
+	})
+})

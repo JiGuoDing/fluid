@@ -38,7 +38,6 @@ import (
 
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
 	"github.com/fluid-cloudnative/fluid/pkg/common"
-	fluidctrl "github.com/fluid-cloudnative/fluid/pkg/ctrl"
 	"github.com/fluid-cloudnative/fluid/pkg/ddc/base"
 	"github.com/fluid-cloudnative/fluid/pkg/utils"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/kubeclient"
@@ -86,18 +85,7 @@ func SyncScheduleInfoToCacheNodes(runtimeInfo base.RuntimeInfoInterface, client 
 
 // getDesiredNodesWithScheduleInfo retrieves the desired cache nodes with schedule info
 func getDesiredNodesWithScheduleInfo(runtimeInfo base.RuntimeInfoInterface, client client.Client) ([]string, error) {
-	workers, err := fluidctrl.GetWorkersAsStatefulset(client,
-		types.NamespacedName{Namespace: runtimeInfo.GetNamespace(), Name: runtimeInfo.GetWorkerStatefulsetName()})
-	if err != nil {
-		return nil, err
-	}
-
-	workerSelector, err := metav1.LabelSelectorAsSelector(workers.Spec.Selector)
-	if err != nil {
-		return nil, err
-	}
-
-	workerPods, err := kubeclient.GetPodsForStatefulSet(client, workers, workerSelector)
+	workerPods, err := runtimeInfo.GetWorkerPods(client)
 	if err != nil {
 		return nil, err
 	}

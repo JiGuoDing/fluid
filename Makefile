@@ -10,7 +10,7 @@ PREFETCHER_VERSION := v0.1.0
 PACKAGE := github.com/fluid-cloudnative/fluid
 
 # Go and build settings
-GO_MODULE ?= off
+GO_MODULE ?= on
 GC_FLAGS ?= -gcflags="all=-N -l"
 LOCAL_FLAGS ?= -gcflags="all=-N -l"
 CGO_ENABLED ?= 0
@@ -36,9 +36,9 @@ DATASET_CONTROLLER_IMG ?= ${IMG_REPO}/dataset-controller
 APPLICATION_CONTROLLER_IMG ?= ${IMG_REPO}/application-controller
 ALLUXIORUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/alluxioruntime-controller
 JINDORUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/jindoruntime-controller
-GOOSEFSRUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/goosefsruntime-controller
 JUICEFSRUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/juicefsruntime-controller
 THINRUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/thinruntime-controller
+CACHERUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/cacheruntime-controller
 EFCRUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/efcruntime-controller
 VINEYARDRUNTIME_CONTROLLER_IMG ?= ${IMG_REPO}/vineyardruntime-controller
 CSI_IMG ?= ${IMG_REPO}/fluid-csi
@@ -46,15 +46,17 @@ INIT_USERS_IMG ?= ${IMG_REPO}/init-users
 WEBHOOK_IMG ?= ${IMG_REPO}/fluid-webhook
 CRD_UPGRADER_IMG ?= ${IMG_REPO}/fluid-crd-upgrader
 PREFETCHER_IMAGE ?= ${IMG_REPO}/fluid-file-prefetcher
+OSS_EMULATOR_IMG ?= ${IMG_REPO}/oss-emulator
+OSS_EMULATOR_VERSION ?= e2e
 
 # Dockerfile paths
 DATASET_DOCKERFILE ?= docker/Dockerfile.dataset
 APPLICATION_DOCKERFILE ?= docker/Dockerfile.application
 ALLUXIORUNTIME_DOCKERFILE ?= docker/Dockerfile.alluxioruntime
 JINDORUNTIME_DOCKERFILE ?= docker/Dockerfile.jindoruntime
-GOOSEFSRUNTIME_DOCKERFILE ?= docker/Dockerfile.goosefsruntime
 JUICEFSRUNTIME_DOCKERFILE ?= docker/Dockerfile.juicefsruntime
 THINRUNTIME_DOCKERFILE ?= docker/Dockerfile.thinruntime
+CACHERUNTIME_DOCKERFILE ?= docker/Dockerfile.cacheruntime
 EFCRUNTIME_DOCKERFILE ?= docker/Dockerfile.efcruntime
 VINEYARDRUNTIME_DOCKERFILE ?= docker/Dockerfile.vineyardruntime
 CSI_DOCKERFILE ?= docker/Dockerfile.csi
@@ -62,6 +64,7 @@ INIT_USERS_DOCKERFILE ?= charts/alluxio/docker/init-users
 WEBHOOK_DOCKERFILE ?= docker/Dockerfile.webhook
 CRD_UPGRADER_DOCKERFILE ?= docker/Dockerfile.crds
 PREFETCHER_DOCKERFILE ?= docker/Dockerfile.fileprefetch
+OSS_EMULATOR_DOCKERFILE ?= test/gha-e2e/jindo/oss-emulator/Dockerfile
 
 # Binary paths
 CSI_BINARY ?= bin/fluid-csi
@@ -69,9 +72,9 @@ DATASET_BINARY ?= bin/dataset-controller
 APPLICATION_BINARY ?= bin/fluidapp-controller
 ALLUXIORUNTIME_BINARY ?= bin/alluxioruntime-controller
 JINDORUNTIME_BINARY ?= bin/jindoruntime-controller
-GOOSEFSRUNTIME_BINARY ?= bin/goosefsruntime-controller
 JUICEFSRUNTIME_BINARY ?= bin/juicefsruntime-controller
 THINRUNTIME_BINARY ?= bin/thinruntime-controller
+CACHERUNTIME_BINARY ?= bin/cacheruntime-controller
 EFCRUNTIME_BINARY ?= bin/efcruntime-controller
 VINEYARDRUNTIME_BINARY ?= bin/vineyardruntime-controller
 WEBHOOK_BINARY ?= bin/fluid-webhook
@@ -87,6 +90,7 @@ BINARY_BUILD += alluxioruntime-controller-build
 BINARY_BUILD += jindoruntime-controller-build
 BINARY_BUILD += juicefsruntime-controller-build
 BINARY_BUILD += thinruntime-controller-build
+BINARY_BUILD += cacheruntime-controller-build
 BINARY_BUILD += efcruntime-controller-build
 BINARY_BUILD += vineyardruntime-controller-build
 BINARY_BUILD += csi-build
@@ -99,11 +103,11 @@ DOCKER_BUILD := docker-build-dataset-controller
 DOCKER_BUILD += docker-build-application-controller
 DOCKER_BUILD += docker-build-alluxioruntime-controller
 DOCKER_BUILD += docker-build-jindoruntime-controller
-DOCKER_BUILD += docker-build-goosefsruntime-controller
 DOCKER_BUILD += docker-build-csi
 DOCKER_BUILD += docker-build-webhook
 DOCKER_BUILD += docker-build-juicefsruntime-controller
 DOCKER_BUILD += docker-build-thinruntime-controller
+DOCKER_BUILD += docker-build-cacheruntime-controller
 DOCKER_BUILD += docker-build-efcruntime-controller
 DOCKER_BUILD += docker-build-vineyardruntime-controller
 DOCKER_BUILD += docker-build-init-users
@@ -117,9 +121,9 @@ DOCKER_PUSH += docker-push-alluxioruntime-controller
 DOCKER_PUSH += docker-push-jindoruntime-controller
 DOCKER_PUSH += docker-push-csi
 DOCKER_PUSH += docker-push-webhook
-DOCKER_PUSH += docker-push-goosefsruntime-controller
 DOCKER_PUSH += docker-push-juicefsruntime-controller
 DOCKER_PUSH += docker-push-thinruntime-controller
+DOCKER_PUSH += docker-push-cacheruntime-controller
 DOCKER_PUSH += docker-push-efcruntime-controller
 DOCKER_PUSH += docker-push-vineyardruntime-controller
 # Not need to push init-users image by default
@@ -132,11 +136,11 @@ DOCKER_BUILDX_PUSH := docker-buildx-push-dataset-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-application-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-alluxioruntime-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-jindoruntime-controller
-DOCKER_BUILDX_PUSH += docker-buildx-push-goosefsruntime-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-csi
 DOCKER_BUILDX_PUSH += docker-buildx-push-webhook
 DOCKER_BUILDX_PUSH += docker-buildx-push-juicefsruntime-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-thinruntime-controller
+DOCKER_BUILDX_PUSH += docker-buildx-push-cacheruntime-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-efcruntime-controller
 DOCKER_BUILDX_PUSH += docker-buildx-push-vineyardruntime-controller
 # Not need to push init-users image by default
@@ -203,8 +207,8 @@ gen-sdk:
 	./hack/sdk/gen-sdk.sh
 
 .PHONY: update-api-doc
-update-api-doc:
-	bash tools/api-doc-gen/generate_api_doc.sh && mv tools/api-doc-gen/api_doc.md docs/zh/dev/api_doc.md && cp docs/zh/dev/api_doc.md docs/en/dev/api_doc.md
+update-api-doc: crd-ref-docs
+	./bin/crd-ref-docs --source-path=api --output-path=docs/zh/dev/api_doc.md --config=./tools/crd-ref-docs/config.yaml --renderer=markdown && cp docs/zh/dev/api_doc.md docs/en/dev/api_doc.md
 
 # Build binary
 .PHONY: build
@@ -226,10 +230,6 @@ alluxioruntime-controller-build:
 jindoruntime-controller-build:
 	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${ARCH} GO111MODULE=${GO_MODULE}  go build ${GC_FLAGS} -a -o ${JINDORUNTIME_BINARY} -ldflags '${LDFLAGS}' cmd/jindo/main.go
 
-.PHONY: goosefsruntime-controller-build
-goosefsruntime-controller-build:
-	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${ARCH} GO111MODULE=${GO_MODULE}  go build ${GC_FLAGS} -a -o ${GOOSEFSRUNTIME_BINARY} -ldflags '${LDFLAGS}' cmd/goosefs/main.go
-
 .PHONY: juicefsruntime-controller-build
 juicefsruntime-controller-build:
 	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${ARCH} GO111MODULE=${GO_MODULE}  go build ${GC_FLAGS} -a -o ${JUICEFSRUNTIME_BINARY} -ldflags '-s -w ${LDFLAGS}' cmd/juicefs/main.go
@@ -237,6 +237,10 @@ juicefsruntime-controller-build:
 .PHONY: thinruntime-controller-build
 thinruntime-controller-build:
 	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${ARCH} GO111MODULE=${GO_MODULE}  go build ${GC_FLAGS} -a -o ${THINRUNTIME_BINARY} -ldflags '-s -w ${LDFLAGS}' cmd/thin/main.go
+
+.PHONY: cacheruntime-controller-build
+cacheruntime-controller-build:
+	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${ARCH} GO111MODULE=${GO_MODULE}  go build ${GC_FLAGS} -a -o ${CACHERUNTIME_BINARY} -ldflags '-s -w ${LDFLAGS}' cmd/cache/main.go
 
 .PHONY: vineyardruntime-controller-build
 vineyardruntime-controller-build:
@@ -271,10 +275,6 @@ docker-build-alluxioruntime-controller:
 docker-build-jindoruntime-controller:
 	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} ${DOCKER_BUILD_ARGS} . -f ${JINDORUNTIME_DOCKERFILE} -t ${JINDORUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
 
-.PHONY: docker-build-goosefsruntime-controller
-docker-build-goosefsruntime-controller:
-	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} ${DOCKER_BUILD_ARGS} . -f ${GOOSEFSRUNTIME_DOCKERFILE} -t ${GOOSEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
-
 .PHONY: docker-build-juicefsruntime-controller
 docker-build-juicefsruntime-controller:
 	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} ${DOCKER_BUILD_ARGS} . -f ${JUICEFSRUNTIME_DOCKERFILE} -t ${JUICEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
@@ -282,6 +282,10 @@ docker-build-juicefsruntime-controller:
 .PHONY: docker-build-thinruntime-controller
 docker-build-thinruntime-controller:
 	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} ${DOCKER_BUILD_ARGS} . -f ${THINRUNTIME_DOCKERFILE} -t ${THINRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
+
+.PHONY: docker-build-cacheruntime-controller
+docker-build-cacheruntime-controller:
+	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} ${DOCKER_BUILD_ARGS} . -f ${CACHERUNTIME_DOCKERFILE} -t ${CACHERUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
 
 .PHONY: docker-build-efcruntime-controller
 docker-build-efcruntime-controller:
@@ -311,6 +315,10 @@ docker-build-crd-upgrader:
 docker-build-prefetcher:
 	docker build ${DOCKER_NO_CACHE_OPTION} --build-arg TARGETARCH=${ARCH} . -f ${PREFETCHER_DOCKERFILE} -t ${PREFETCHER_IMAGE}:${PREFETCHER_VERSION}
 
+.PHONY: docker-build-oss-emulator
+docker-build-oss-emulator:
+	docker build ${DOCKER_NO_CACHE_OPTION} test/gha-e2e/jindo/oss-emulator -f ${OSS_EMULATOR_DOCKERFILE} -t ${OSS_EMULATOR_IMG}:${OSS_EMULATOR_VERSION}
+
 # Push the docker image
 .PHONY: docker-push-dataset-controller
 docker-push-dataset-controller: docker-build-dataset-controller
@@ -328,10 +336,6 @@ docker-push-alluxioruntime-controller: docker-build-alluxioruntime-controller
 docker-push-jindoruntime-controller: docker-build-jindoruntime-controller
 	docker push ${JINDORUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
 
-.PHONY: docker-push-goosefsruntime-controller
-docker-push-goosefsruntime-controller: docker-build-goosefsruntime-controller
-	docker push ${GOOSEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
-
 .PHONY: docker-push-juicefsruntime-controller
 docker-push-juicefsruntime-controller: docker-build-juicefsruntime-controller
 	docker push ${JUICEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
@@ -339,6 +343,10 @@ docker-push-juicefsruntime-controller: docker-build-juicefsruntime-controller
 .PHONY: docker-push-thinruntime-controller
 docker-push-thinruntime-controller: docker-build-thinruntime-controller
 	docker push ${THINRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
+
+.PHONY: docker-push-cacheruntime-controller
+docker-push-cacheruntime-controller: docker-build-cacheruntime-controller
+	docker push ${CACHERUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
 
 .PHONY: docker-push-efcruntime-controller
 docker-push-efcruntime-controller: docker-build-efcruntime-controller
@@ -368,6 +376,10 @@ docker-push-crd-upgrader: docker-build-crd-upgrader
 docker-push-prefetcher: docker-build-prefetcher
 	docker push ${PREFETCHER_IMAGE}:${PREFETCHER_VERSION}
 
+.PHONY: docker-push-oss-emulator
+docker-push-oss-emulator: docker-build-oss-emulator
+	docker push ${OSS_EMULATOR_IMG}:${OSS_EMULATOR_VERSION}
+
 # Buildx and push the docker image
 .PHONY: docker-buildx-push-dataset-controller
 docker-buildx-push-dataset-controller:
@@ -385,10 +397,6 @@ docker-buildx-push-alluxioruntime-controller:
 docker-buildx-push-jindoruntime-controller:
 	docker buildx build --push ${DOCKER_BUILD_ARGS} --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${JINDORUNTIME_DOCKERFILE} -t ${JINDORUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
 
-.PHONY: docker-buildx-push-goosefsruntime-controller
-docker-buildx-push-goosefsruntime-controller:
-	docker buildx build --push ${DOCKER_BUILD_ARGS} --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${GOOSEFSRUNTIME_DOCKERFILE} -t ${GOOSEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
-
 .PHONY: docker-buildx-push-juicefsruntime-controller
 docker-buildx-push-juicefsruntime-controller:
 	docker buildx build --push ${DOCKER_BUILD_ARGS} --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${JUICEFSRUNTIME_DOCKERFILE} -t ${JUICEFSRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
@@ -396,6 +404,11 @@ docker-buildx-push-juicefsruntime-controller:
 .PHONY: docker-buildx-push-thinruntime-controller
 docker-buildx-push-thinruntime-controller:
 	docker buildx build --push ${DOCKER_BUILD_ARGS} --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${THINRUNTIME_DOCKERFILE} -t ${THINRUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
+
+.PHONY: docker-buildx-push-cacheruntime-controller
+docker-buildx-push-cacheruntime-controller:
+	docker buildx build --push ${DOCKER_BUILD_ARGS} --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${CACHERUNTIME_DOCKERFILE} -t ${CACHERUNTIME_CONTROLLER_IMG}:${GIT_VERSION}
+
 
 .PHONY: docker-buildx-push-efcruntime-controller
 docker-buildx-push-efcruntime-controller:
@@ -425,14 +438,28 @@ docker-buildx-push-crd-upgrader:
 docker-buildx-push-crd-prefetcher:
 	docker buildx build --push --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} . -f ${PREFETCHER_DOCKERFILE} -t ${PREFETCHER_IMAGE}:${PREFETCHER_VERSION}
 
+.PHONY: docker-buildx-push-oss-emulator
+docker-buildx-push-oss-emulator:
+	docker buildx build --push --platform ${DOCKER_PLATFORM} ${DOCKER_NO_CACHE_OPTION} test/gha-e2e/jindo/oss-emulator -f ${OSS_EMULATOR_DOCKERFILE} -t ${OSS_EMULATOR_IMG}:${OSS_EMULATOR_VERSION}
+
 .PHONY: docker-build-all
-docker-build-all: pre-setup ${DOCKER_BUILD}
+docker-build-all: pre-setup download-helm ${DOCKER_BUILD}
 
 .PHONY: docker-push-all
 docker-push-all: pre-setup ${DOCKER_PUSH}
 
 .PHONY: docker-buildx-all-push
-docker-buildx-all-push: pre-setup ${DOCKER_BUILDX_PUSH}
+docker-buildx-all-push: pre-setup download-helm ${DOCKER_BUILDX_PUSH}
+
+##@ Helm Binary
+
+HELM_BINARY_DIR := $(shell pwd)/bin/helm/$(HELM_VERSION)
+
+# Download helm binaries for linux/amd64 and linux/arm64 to bin/helm/<version>/
+# Run this target when upgrading HELM_VERSION or on a fresh checkout.
+.PHONY: download-helm
+download-helm:
+	bash hack/download-helm.sh $(HELM_VERSION) $(HELM_BINARY_DIR)
 
 ##@ Dependencies
 
@@ -444,10 +471,12 @@ $(LOCALBIN):
 ## Tool Binaries
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+CRD_REF_DOCS ?= $(LOCALBIN)/crd-ref-docs
 
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 GOLANGCI_LINT_VERSION ?= v1.64.8
+CRD_REF_DOCS_VERSION ?= v0.3.0
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
@@ -458,6 +487,11 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: crd-ref-docs
+crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary.
+$(CRD_REF_DOCS): $(LOCALBIN)
+	$(call go-install-tool,$(CRD_REF_DOCS),github.com/elastic/crd-ref-docs,$(CRD_REF_DOCS_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

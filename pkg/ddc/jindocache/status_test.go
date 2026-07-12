@@ -17,110 +17,186 @@ limitations under the License.
 package jindocache
 
 import (
-	"testing"
+	"context"
+	"reflect"
 
 	"github.com/agiledragon/gomonkey/v2"
 	datav1alpha1 "github.com/fluid-cloudnative/fluid/api/v1alpha1"
+	"github.com/fluid-cloudnative/fluid/pkg/common"
 	"github.com/fluid-cloudnative/fluid/pkg/utils"
 	"github.com/fluid-cloudnative/fluid/pkg/utils/fake"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func TestCheckAndUpdateRuntimeStatus(t *testing.T) {
+var _ = Describe("CheckAndUpdateRuntimeStatus", func() {
+	var (
+		masterInputs  []*appsv1.StatefulSet
+		workerInputs  []appsv1.StatefulSet
+		runtimeInputs []*datav1alpha1.JindoRuntime
+	)
 
-	masterInputs := []*appsv1.StatefulSet{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "hbase-jindofs-master",
-				Namespace: "fluid",
-			},
-			Status: appsv1.StatefulSetStatus{
-				ReadyReplicas: 1,
-			},
-		},
-	}
-
-	var workerInputs = []appsv1.StatefulSet{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "hbase-jindofs-worker",
-				Namespace: "fluid",
-			},
-			Status: appsv1.StatefulSetStatus{
-				Replicas:      3,
-				ReadyReplicas: 3,
-			},
-		},
-	}
-
-	runtimeInputs := []*datav1alpha1.JindoRuntime{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "hbase",
-				Namespace: "fluid",
-			},
-			Spec: datav1alpha1.JindoRuntimeSpec{
-				Replicas: 3, // 2
-			},
-			Status: datav1alpha1.RuntimeStatus{
-				CurrentWorkerNumberScheduled: 2,
-				CurrentMasterNumberScheduled: 2, // 0
-				CurrentFuseNumberScheduled:   2,
-				DesiredMasterNumberScheduled: 3,
-				DesiredWorkerNumberScheduled: 2,
-				DesiredFuseNumberScheduled:   3,
-				Conditions: []datav1alpha1.RuntimeCondition{
-					utils.NewRuntimeCondition(datav1alpha1.RuntimeWorkersInitialized, datav1alpha1.RuntimeWorkersInitializedReason, "The workers are initialized.", v1.ConditionTrue),
-					utils.NewRuntimeCondition(datav1alpha1.RuntimeFusesInitialized, datav1alpha1.RuntimeFusesInitializedReason, "The fuses are initialized.", v1.ConditionTrue),
+	BeforeEach(func() {
+		masterInputs = []*appsv1.StatefulSet{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hbase-jindofs-master",
+					Namespace: "fluid",
 				},
-				WorkerPhase: "NotReady",
-				FusePhase:   "NotReady",
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ReadyReplicas: 1,
+				},
 			},
-		},
-	}
+		}
 
-	objs := []runtime.Object{}
-	for _, masterInput := range masterInputs {
-		objs = append(objs, masterInput.DeepCopy())
-	}
+		workerInputs = []appsv1.StatefulSet{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hbase-jindofs-worker",
+					Namespace: "fluid",
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(3)),
+				},
+				Status: appsv1.StatefulSetStatus{
+					Replicas:      3,
+					ReadyReplicas: 3,
+				},
+			},
+		}
 
-	for _, workerInput := range workerInputs {
-		objs = append(objs, workerInput.DeepCopy())
-	}
+		runtimeInputs = []*datav1alpha1.JindoRuntime{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hbase",
+					Namespace: "fluid",
+				},
+				Spec: datav1alpha1.JindoRuntimeSpec{
+					Replicas: 3, // 2
+				},
+				Status: datav1alpha1.RuntimeStatus{
+					CurrentWorkerNumberScheduled: 2,
+					CurrentMasterNumberScheduled: 2, // 0
+					CurrentFuseNumberScheduled:   2,
+					DesiredMasterNumberScheduled: 3,
+					DesiredWorkerNumberScheduled: 2,
+					DesiredFuseNumberScheduled:   3,
+					Conditions: []datav1alpha1.RuntimeCondition{
+						utils.NewRuntimeCondition(datav1alpha1.RuntimeWorkersInitialized, datav1alpha1.RuntimeWorkersInitializedReason, "The workers are initialized.", v1.ConditionTrue),
+						utils.NewRuntimeCondition(datav1alpha1.RuntimeFusesInitialized, datav1alpha1.RuntimeFusesInitializedReason, "The fuses are initialized.", v1.ConditionTrue),
+					},
+					WorkerPhase: "NotReady",
+					FusePhase:   "NotReady",
+				},
+			},
+		}
+	})
 
-	for _, runtimeInput := range runtimeInputs {
-		objs = append(objs, runtimeInput.DeepCopy())
-	}
-	fakeClient := fake.NewFakeClientWithScheme(testScheme, objs...)
-	// engine := newJindoCacheEngineREP(fakeClient, testCase.name, testCase.namespace)
+	It("should check and update runtime status for hbase", func() {
+		objs := []runtime.Object{}
+		for _, masterInput := range masterInputs {
+			objs = append(objs, masterInput.DeepCopy())
+		}
 
-	testCases := []struct {
-		testName  string
-		name      string
-		namespace string
-		isErr     bool
-	}{
-		// TODO: add more unit tests
-		{testName: "hbase",
-			name:      "hbase",
-			namespace: "fluid"},
-	}
+		for _, workerInput := range workerInputs {
+			objs = append(objs, workerInput.DeepCopy())
+		}
 
-	for _, testCase := range testCases {
-		engine := newJindoCacheEngineREP(fakeClient, testCase.name, testCase.namespace)
+		for _, runtimeInput := range runtimeInputs {
+			objs = append(objs, runtimeInput.DeepCopy())
+		}
+		fakeClient := fake.NewFakeClientWithScheme(testScheme, objs...)
+
+		engine := newJindoCacheEngineREP(fakeClient, "hbase", "fluid")
 
 		patches := gomonkey.ApplyPrivateMethod(engine, "syncCacheModeRuntimeStatus", func() (ready bool, err error) {
 			return true, nil
 		})
+		defer patches.Reset()
 
 		_, err := engine.CheckAndUpdateRuntimeStatus()
-		if err != nil {
-			t.Errorf("testcase %s Failed due to %v", testCase.testName, err)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should update cache mode runtime status when master and worker are ready", func() {
+		objs := []runtime.Object{}
+		for _, masterInput := range masterInputs {
+			objs = append(objs, masterInput.DeepCopy())
 		}
 
-		patches.Reset()
-	}
-}
+		for _, workerInput := range workerInputs {
+			objs = append(objs, workerInput.DeepCopy())
+		}
+
+		for _, runtimeInput := range runtimeInputs {
+			objs = append(objs, runtimeInput.DeepCopy())
+		}
+
+		fakeClient := fake.NewFakeClientWithScheme(testScheme, objs...)
+		engine := newJindoCacheEngineREP(fakeClient, "hbase", "fluid")
+		engine.engineImpl = common.JindoRuntime
+
+		patches := gomonkey.ApplyMethod(reflect.TypeOf(engine), "GetReportSummary", func(_ *JindoCacheEngine) (string, error) {
+			return mockJindoReportSummary(), nil
+		})
+		defer patches.Reset()
+
+		datasetPatch := gomonkey.ApplyFunc(utils.GetDataset, func(_ client.Reader, _ string, _ string) (*datav1alpha1.Dataset, error) {
+			return &datav1alpha1.Dataset{
+				Status: datav1alpha1.DatasetStatus{
+					UfsTotal: "52.18MiB",
+				},
+			}, nil
+		})
+		defer datasetPatch.Reset()
+
+		ready, err := engine.CheckAndUpdateRuntimeStatus()
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ready).To(BeTrue())
+
+		updatedRuntime := &datav1alpha1.JindoRuntime{}
+		Expect(fakeClient.Get(context.TODO(), client.ObjectKey{Name: "hbase", Namespace: "fluid"}, updatedRuntime)).To(Succeed())
+		Expect(updatedRuntime.Status.CacheAffinity).NotTo(BeNil())
+		Expect(updatedRuntime.Status.CacheStates).To(HaveKeyWithValue(common.CacheCapacity, "250.38GiB"))
+		Expect(updatedRuntime.Status.CacheStates).To(HaveKeyWithValue(common.Cached, "11.72GiB"))
+		Expect(updatedRuntime.Status.CacheStates).To(HaveKeyWithValue(common.CachedPercentage, "100.0%"))
+		Expect(updatedRuntime.Status.ValueFileConfigmap).To(Equal("hbase-jindo-values"))
+	})
+
+	It("should fall back to jindofsx values configmap in fuse-only mode", func() {
+		fuseOnlyRuntime := &datav1alpha1.JindoRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "fuse-only",
+				Namespace: "fluid",
+			},
+			Spec: datav1alpha1.JindoRuntimeSpec{
+				Master: datav1alpha1.JindoCompTemplateSpec{Disabled: true},
+				Worker: datav1alpha1.JindoCompTemplateSpec{Disabled: true},
+			},
+		}
+
+		fakeClient := fake.NewFakeClientWithScheme(testScheme, fuseOnlyRuntime.DeepCopy())
+		engine := newJindoCacheEngineREP(fakeClient, "fuse-only", "fluid")
+		engine.engineImpl = common.JindoRuntime
+		engine.runtime = fuseOnlyRuntime
+
+		ready, err := engine.CheckAndUpdateRuntimeStatus()
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ready).To(BeTrue())
+
+		updatedRuntime := &datav1alpha1.JindoRuntime{}
+		Expect(fakeClient.Get(context.TODO(), client.ObjectKey{Name: "fuse-only", Namespace: "fluid"}, updatedRuntime)).To(Succeed())
+		Expect(updatedRuntime.Status.ValueFileConfigmap).To(Equal("fuse-only-jindofsx-values"))
+	})
+})

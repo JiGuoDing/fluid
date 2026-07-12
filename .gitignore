@@ -6,7 +6,7 @@
 *.so
 *.dylib
 *.jar
-bin
+/bin/
 
 # Test binary, build with `go test -c`
 *.test
@@ -24,6 +24,7 @@ bin
 *.swo
 *~
 .vscode
+.qoder
 
 **/*.tgz
 **/.DS_Store
