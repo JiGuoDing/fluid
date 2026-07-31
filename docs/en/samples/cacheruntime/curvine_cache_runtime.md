@@ -217,12 +217,18 @@ topology:
           - -c
           - /app/curvine/mountUfs.sh
         timeout: 120
+      reportSummary:
+        command:
+          - bash
+          - -c
+          - /app/curvine/reportSummary.sh
+        timeout: 30
     template:
       spec:
         restartPolicy: Always
         containers:
           - name: master
-            image: curvine/curvine-fluid:latest
+            image: curvine/curvine:0.3.6-alpha
             command:
               - /entrypoint.sh
             args:
@@ -248,7 +254,7 @@ topology:
         restartPolicy: Always
         containers:
           - name: worker
-            image: curvine/curvine-fluid:latest
+            image: curvine/curvine:0.3.6-alpha
             command:
               - /entrypoint.sh
             args:
@@ -272,7 +278,7 @@ topology:
         restartPolicy: Always
         containers:
           - name: client
-            image: curvine/curvine-fluid:latest
+            image: curvine/curvine:0.3.6-alpha
             command:
               - /entrypoint.sh
             args:
@@ -304,7 +310,7 @@ $ kubectl create -f cacheruntimeclass.yaml
 Key sections:
 - **`fileSystemType`**: Identifies this as a Curvine filesystem (`curvinefs`)
 - **`dataOperationSpecs`**: Defines how DataLoad operations execute — generates config, then uses the `cv` CLI to preload data from the UFS into Curvine
-- **`topology.master`**: Curvine master node with headless service, readiness probe on RPC port 8995, and a MountUFS script
+- **`topology.master`**: Curvine master node with headless service, readiness probe on RPC port 8995, a MountUFS script, and a reportSummary script (for generating cache summary reports)
 - **`topology.worker`**: Curvine worker nodes with readiness probe on port 8997
 - **`topology.client`**: FUSE client DaemonSet running in privileged mode, with graceful pre-stop unmount cleanup
 

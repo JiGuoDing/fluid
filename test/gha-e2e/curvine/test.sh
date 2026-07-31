@@ -122,7 +122,6 @@ function wait_cache_worker_ready() {
     local runtime_desired_replicas=""
     local asts_ready_replicas=""
     local asts_desired_replicas=""
-    local worker_pod=""
     local pod_states=""
     local log_interval=0
     local log_times=0
@@ -133,7 +132,6 @@ function wait_cache_worker_ready() {
         runtime_desired_replicas=$(kubectl get cacheruntime "$dataset_name" -ojsonpath='{@.status.worker.desiredReplicas}')
         asts_ready_replicas=$(kubectl get advancedstatefulset "$worker_component_name" -ojsonpath='{@.status.readyReplicas}' 2>/dev/null)
         asts_desired_replicas=$(kubectl get advancedstatefulset "$worker_component_name" -ojsonpath='{@.spec.replicas}' 2>/dev/null)
-        worker_pod=$(kubectl get pod -l "$worker_selector" -ojsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
         pod_states=$(kubectl get pod -l "$worker_selector" -ojsonpath='{range .items[*]}{.metadata.name}:{range .status.containerStatuses[*]}{.ready}{end}:{.status.phase}{" "}{end}' 2>/dev/null)
 
@@ -376,6 +374,14 @@ function wait_runtime_deleted() {
     syslog "PV/PVC cleaned up successfully"
 }
 
+function check_dataset_cache_state() {
+    local cache_capacity
+    cache_capacity=$(kubectl get dataset ${dataset_name} -o jsonpath='{.status.cacheStates.cacheCapacity}' 2>/dev/null)
+    if [[ -z "$cache_capacity" ]]; then
+        panic "cache_capacity is empty, report summary failed."
+    fi
+}
+
 function main() {
     syslog "[TESTCASE $testname STARTS AT $(date)]"
     trap dump_env_and_clean_up EXIT
@@ -385,6 +391,9 @@ function main() {
     create_reference_dataset
     wait_reference_dataset_bound
     wait_cache_worker_ready
+
+    check_dataset_cache_state
+
     create_job test/gha-e2e/curvine/write_job.yaml $write_job_name
     wait_job_completed $write_job_name
     create_dataload
@@ -414,3 +423,5 @@ function main() {
 }
 
 main
+
+
