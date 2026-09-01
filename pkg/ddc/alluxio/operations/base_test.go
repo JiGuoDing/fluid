@@ -55,6 +55,12 @@ func TestNewAlluxioFileUtils(t *testing.T) {
 	}
 }
 
+// TestLoadMetaData 测试 AlluxioFileUtils.LoadMetaData 方法。
+// 通过 gomonkey 模拟 ExecCommandInContainerWithFullOutput，
+// 验证指定路径的元数据加载是否能够正常完成且不返回错误。
+//
+// 测试用例：
+// - "/" 路径且 sync=true：期望成功加载元数据，不返回错误。
 func TestLoadMetaData(t *testing.T) {
 	var tests = []struct {
 		path string
